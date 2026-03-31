@@ -1,10 +1,12 @@
 package digital.tonima.bubbleslauncher.data
 
 import android.app.usage.UsageStatsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
+import android.os.Process.myUserHandle
 import android.os.UserManager
 import android.os.UserHandle
 import android.util.Log
@@ -41,7 +43,8 @@ class AppRepository @Inject constructor(
                     val appName = resolveInfo.loadLabel(packageManager).toString()
                     val icon = resolveInfo.loadIcon(packageManager)
                     val timeInForeground = usageStats[packageName] ?: 0L
-                    AppInfo(packageName, appName, icon, timeInForeground)
+                    val component = ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name)
+                    AppInfo(packageName, appName, icon, timeInForeground, component, null)
                 }
             }
             Profile.WORK -> {
@@ -49,8 +52,9 @@ class AppRepository @Inject constructor(
                     val launcherApps = context.getSystemService(LauncherApps::class.java)
                     val userManager = context.getSystemService(UserManager::class.java)
                     val profiles: List<UserHandle> = userManager?.userProfiles ?: emptyList()
-                    val personal = profiles.firstOrNull()
-                    val workProfiles = profiles.filter { it != personal }
+                    // Treat other user profiles (not the current) as work profiles
+                    val current = myUserHandle()
+                    val workProfiles = profiles.filter { uh -> uh != current }
                     val result = mutableListOf<AppInfo>()
                     workProfiles.forEach { userHandle ->
                         val activities = launcherApps?.getActivityList(null, userHandle) ?: emptyList()
@@ -59,7 +63,9 @@ class AppRepository @Inject constructor(
                             val appName = lai.label?.toString() ?: packageName
                             val icon = lai.applicationInfo.loadIcon(packageManager)
                             val timeInForeground = usageStats[packageName] ?: 0L
-                            result.add(AppInfo(packageName, appName, icon, timeInForeground))
+                            // lai (LauncherActivityInfo) has componentName and is associated with a user
+                            val comp = lai.componentName
+                            result.add(AppInfo(packageName, appName, icon, timeInForeground, comp, userHandle))
                         }
                     }
                     result
@@ -82,6 +88,17 @@ class AppRepository @Inject constructor(
             stats.mapValues { it.value.totalTimeInForeground }
         } catch (e: Exception) {
             emptyMap()
+        }
+    }
+
+    suspend fun hasWorkProfile(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val userManager = context.getSystemService(UserManager::class.java)
+            val profiles: List<UserHandle> = userManager?.userProfiles ?: emptyList()
+            val current = android.os.Process.myUserHandle()
+            profiles.any { it != current }
+        } catch (t: Throwable) {
+            false
         }
     }
 }

@@ -78,7 +78,6 @@ fun MainScreen(
             )
         }
         val maxTime = state.apps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
-        // The ViewModel provides `state.apps` already ordered with pinned apps first.
         val sortedApps = state.apps
 
         androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -88,11 +87,12 @@ fun MainScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 content = {
                     items(sortedApps) { app ->
-                    Box {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AppBubble(
                             app = app,
                             maxTime = maxTime,
@@ -101,9 +101,22 @@ fun MainScreen(
                             ignoreDynamicSize = state.ignoreDynamicSize,
                             iconSizeDp = state.iconSizeDp,
                             onClick = {
-                                val intent = packageManager.getLaunchIntentForPackage(app.packageName)
-                                if (intent != null) {
-                                    context.startActivity(intent)
+                                try {
+                                    if (app.componentName != null && app.userHandle != null) {
+                                        val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
+                                        launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
+                                    } else {
+                                        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                                        if (intent != null) {
+                                            context.startActivity(intent)
+                                        }
+                                    }
+                                } catch (t: Throwable) {
+                                    try {
+                                        val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                        context.startActivity(infoIntent)
+                                    } catch (_: Exception) { /* ignore */ }
                                 }
                             },
                             onLongClick = { menuApp = app }
@@ -140,7 +153,6 @@ fun MainScreen(
                                             }
                                             context.startActivity(intent)
                                         } catch (_: Exception) {
-                                            // Fallback: open Play Store page for the app
                                             val intent = Intent(Intent.ACTION_VIEW,
                                                 "market://details?id=${app.packageName}".toUri()).apply {
                                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -187,15 +199,12 @@ fun AppBubble(
         ColorMatrix().apply { setToSaturation(0f) }
     }
 
-    // Convert dp size to pixels for bitmap creation and remember the scaled bitmap
     val density = LocalDensity.current
     val targetPx = with(density) { resolvedSize.roundToPx() }
     val imageBitmap = remember(app.packageName, targetPx) {
-        // create a scaled bitmap to avoid large allocations during fast scroll
         try {
             app.icon.toBitmap(width = targetPx.coerceAtLeast(1), height = targetPx.coerceAtLeast(1)).asImageBitmap()
         } catch (t: Throwable) {
-            // fallback to intrinsic size conversion if scaling fails
             app.icon.toBitmap().asImageBitmap()
         }
     }

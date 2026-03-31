@@ -26,6 +26,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val HIGHLIGHTED_APPS = stringSetPreferencesKey("highlighted_apps")
         private val PINNED_APPS = stringSetPreferencesKey("pinned_apps")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
+        private val SELECTED_PROFILE = stringPreferencesKey("selected_profile")
     }
 
     private val dataStore = context.dataStore
@@ -58,6 +59,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     // theme mode stored as string: "system", "light", "dark"
     val themeModeFlow: Flow<String> = dataStore.data.map { prefs ->
         prefs[THEME_MODE] ?: "system"
+    }
+
+    // selected profile stored as string: "personal" or "work"
+    val selectedProfileFlow: Flow<String> = dataStore.data.map { prefs ->
+        prefs[SELECTED_PROFILE] ?: "personal"
     }
 
     suspend fun setShowAppNames(value: Boolean) {
@@ -127,6 +133,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setThemeMode(value: String) {
         dataStore.edit { prefs ->
             prefs[THEME_MODE] = value
+        }
+    }
+
+    suspend fun setSelectedProfile(value: String) {
+        dataStore.edit { prefs ->
+            prefs[SELECTED_PROFILE] = value
         }
     }
 }

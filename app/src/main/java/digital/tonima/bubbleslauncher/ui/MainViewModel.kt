@@ -36,6 +36,8 @@ class MainViewModel @Inject constructor(
         ,
         val selectedProfile: Profile = Profile.PERSONAL,
         val themeMode: String = "system" // "system", "light", "dark"
+        ,
+        val hasWorkProfile: Boolean = false
     )
 
     sealed class MainIntent {
@@ -98,6 +100,22 @@ class MainViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsRepository.selectedProfileFlow.collect { profileStr ->
+                val profile = when (profileStr) {
+                    "work" -> Profile.WORK
+                    else -> Profile.PERSONAL
+                }
+                _uiState.update { it.copy(selectedProfile = profile) }
+            }
+        }
+        // detect if device has a work profile
+        viewModelScope.launch {
+            val hasWork = try {
+                repository.hasWorkProfile()
+            } catch (_: Exception) { false }
+            _uiState.update { it.copy(hasWorkProfile = hasWork) }
+        }
+        viewModelScope.launch {
             settingsRepository.highlightedAppsFlow.collect { set ->
                 _uiState.update { it.copy(highlightedApps = set) }
             }
@@ -118,7 +136,9 @@ class MainViewModel @Inject constructor(
             is MainIntent.LoadApps -> {
                 _uiState.update { it.copy(isLoading = true) }
                 try {
-                    val apps = repository.getApps()
+                    // Load apps for the currently selected profile so the selection persists across resumes
+                    val profile = _uiState.value.selectedProfile
+                    val apps = repository.getAppsForProfile(profile)
                     val sorted = apps.sortedByDescending { it.totalTimeInForeground }
                     val pinned = _uiState.value.pinnedApps
                     val (pinnedList, others) = sorted.partition { pinned.contains(it.packageName) }
@@ -218,8 +238,13 @@ class MainViewModel @Inject constructor(
                 }
             }
             is MainIntent.SelectProfile -> {
+                // persist selected profile and load apps for it
                 _uiState.update { it.copy(selectedProfile = intent.profile, isLoading = true) }
                 viewModelScope.launch {
+                    try {
+                        settingsRepository.setSelectedProfile(if (intent.profile == Profile.WORK) "work" else "personal")
+                    } catch (_: Exception) { /* ignore persisting errors */ }
+
                     try {
                         val apps = repository.getAppsForProfile(intent.profile)
                         val sorted = apps.sortedByDescending { it.totalTimeInForeground }

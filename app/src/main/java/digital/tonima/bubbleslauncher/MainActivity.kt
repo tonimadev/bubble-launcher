@@ -1,7 +1,11 @@
 package digital.tonima.bubbleslauncher
 
 import android.Manifest
+import android.app.AppOpsManager
+import android.content.Intent
+import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -67,7 +71,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
                 val state by viewModel.uiState.collectAsState()
-                // Apply theme based on user's selection in settings
+
                 val themeMode = state.themeMode
                 val useDark = when (themeMode) {
                     "light" -> false
@@ -98,6 +102,25 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                val (showUsageRationale, setShowUsageRationale) = remember { mutableStateOf(false) }
+                fun hasUsageAccess(ctx: Context): Boolean {
+                    return try {
+                        val appOps = ctx.getSystemService(AppOpsManager::class.java)
+                        val mode = appOps.noteOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+                        mode == AppOpsManager.MODE_ALLOWED || mode == 0
+                    } catch (t: Throwable) {
+                        false
+                    }
+                }
+
+                LaunchedEffect(state.ignoreDynamicSize, state.apps) {
+                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity)) {
+                        setShowUsageRationale(true)
+                    } else {
+                        setShowUsageRationale(false)
+                    }
+                }
+
                 val snackbarHostState = remember { SnackbarHostState() }
                 val prefSavedMsg = stringResource(id = R.string.msg_preference_saved)
                 val highlightSavedMsg = stringResource(id = R.string.msg_highlight_saved)
@@ -116,12 +139,14 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
-                        PrimaryTabRow(selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1) {
-                            Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
-                                Text(stringResource(id = R.string.tab_personal))
-                            }
-                            Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
-                                Text(stringResource(id = R.string.tab_work))
+                        if (state.hasWorkProfile) {
+                            PrimaryTabRow(selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1) {
+                                Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
+                                    Text(stringResource(id = R.string.tab_personal))
+                                }
+                                Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
+                                    Text(stringResource(id = R.string.tab_work))
+                                }
                             }
                         }
                     }
@@ -148,6 +173,26 @@ class MainActivity : ComponentActivity() {
                                         TextButton(onClick = { setRationaleVisible(false) }) {
                                             Text(stringResource(id = R.string.permission_rationale_cancel))
                                         }
+                                    }
+                                )
+                            }
+                            if (showUsageRationale) {
+                                AlertDialog(
+                                    onDismissRequest = { setShowUsageRationale(false) },
+                                    title = { Text(stringResource(id = R.string.usage_access_title)) },
+                                    text = { Text(stringResource(id = R.string.usage_access_message)) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            setShowUsageRationale(false)
+                                            try {
+                                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                startActivity(intent)
+                                            } catch (_: Exception) { }
+                                        }) { Text(stringResource(id = R.string.usage_access_button)) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { setShowUsageRationale(false) }) { Text(stringResource(id = R.string.permission_rationale_cancel)) }
                                     }
                                 )
                             }
@@ -262,7 +307,6 @@ fun SettingsScreen(
                 )
             }
         }
-        // Theme selection
         Text(text = stringResource(id = R.string.label_theme), modifier = Modifier.padding(top = 12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Row {
