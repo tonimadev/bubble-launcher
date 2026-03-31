@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -64,7 +66,16 @@ class MainActivity : ComponentActivity() {
             viewModel.submitIntent(MainViewModel.MainIntent.LoadApps)
         }
         setContent {
-            BubblesLauncherTheme {
+                val state by viewModel.uiState.collectAsState()
+                // Apply theme based on user's selection in settings
+                val themeMode = state.themeMode
+                val useDark = when (themeMode) {
+                    "light" -> false
+                    "dark" -> true
+                    else -> isSystemInDarkTheme()
+                }
+
+                BubblesLauncherTheme(darkTheme = useDark) {
                     val (isRationaleVisible, setRationaleVisible) = remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
                         val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -87,7 +98,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                val state by viewModel.uiState.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val prefSavedMsg = stringResource(id = R.string.msg_preference_saved)
                 val highlightSavedMsg = stringResource(id = R.string.msg_highlight_saved)
@@ -151,6 +161,8 @@ class MainActivity : ComponentActivity() {
                                     onToggleIgnoreDynamicSize = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleIgnoreDynamicSize) },
                                     onToggleUseSystemWallpaper = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleUseSystemWallpaper) },
                                     onSetIconSize = { dp -> viewModel.submitIntent(MainViewModel.MainIntent.SetIconSize(dp)) },
+                                    onSetThemeMode = { mode: String -> viewModel.submitIntent(MainViewModel.MainIntent.SetThemeMode(mode)) },
+                                    themeMode = state.themeMode,
                                     onBack = { setShowSettings(false) },
                                     modifier = Modifier.padding(innerPadding)
                                 )
@@ -200,10 +212,12 @@ fun SettingsScreen(
     ignoreDynamicSize: Boolean = false,
     useSystemWallpaper: Boolean = false,
     iconSizeDp: Int = 64,
+    themeMode: String = "system",
     onToggleShowNames: () -> Unit,
     onToggleIgnoreDynamicSize: () -> Unit = {},
     onToggleUseSystemWallpaper: () -> Unit = {},
     onSetIconSize: (Int) -> Unit = {},
+    onSetThemeMode: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(modifier = modifier.padding(16.dp)) {
@@ -246,6 +260,22 @@ fun SettingsScreen(
                     steps = stepsParam,
                     enabled = ignoreDynamicSize
                 )
+            }
+        }
+        // Theme selection
+        Text(text = stringResource(id = R.string.label_theme), modifier = Modifier.padding(top = 12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row {
+                RadioButton(selected = themeMode == "system", onClick = { onSetThemeMode("system") })
+                Text(text = stringResource(id = R.string.theme_system), modifier = Modifier.padding(start = 8.dp))
+            }
+            Row {
+                RadioButton(selected = themeMode == "light", onClick = { onSetThemeMode("light") })
+                Text(text = stringResource(id = R.string.theme_light), modifier = Modifier.padding(start = 8.dp))
+            }
+            Row {
+                RadioButton(selected = themeMode == "dark", onClick = { onSetThemeMode("dark") })
+                Text(text = stringResource(id = R.string.theme_dark), modifier = Modifier.padding(start = 8.dp))
             }
         }
         Button(onClick = { onBack() }, modifier = Modifier.padding(top = 16.dp)) {

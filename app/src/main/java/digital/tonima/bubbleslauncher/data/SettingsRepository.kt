@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,6 +25,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val USE_SYSTEM_WALLPAPER = booleanPreferencesKey("use_system_wallpaper")
         private val HIGHLIGHTED_APPS = stringSetPreferencesKey("highlighted_apps")
         private val PINNED_APPS = stringSetPreferencesKey("pinned_apps")
+        private val THEME_MODE = stringPreferencesKey("theme_mode")
     }
 
     private val dataStore = context.dataStore
@@ -51,6 +53,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     val pinnedAppsFlow: Flow<Set<String>> = dataStore.data.map { prefs ->
         prefs[PINNED_APPS] ?: emptySet()
+    }
+
+    // theme mode stored as string: "system", "light", "dark"
+    val themeModeFlow: Flow<String> = dataStore.data.map { prefs ->
+        prefs[THEME_MODE] ?: "system"
     }
 
     suspend fun setShowAppNames(value: Boolean) {
@@ -114,6 +121,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setIconSize(dp: Int) {
         dataStore.edit { prefs ->
             prefs[ICON_SIZE] = dp
+        }
+    }
+
+    suspend fun setThemeMode(value: String) {
+        dataStore.edit { prefs ->
+            prefs[THEME_MODE] = value
         }
     }
 }

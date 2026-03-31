@@ -34,7 +34,8 @@ class MainViewModel @Inject constructor(
         val iconSizeDp: Int = 64,
         val useSystemWallpaper: Boolean = false
         ,
-        val selectedProfile: Profile = Profile.PERSONAL
+        val selectedProfile: Profile = Profile.PERSONAL,
+        val themeMode: String = "system" // "system", "light", "dark"
     )
 
     sealed class MainIntent {
@@ -42,6 +43,7 @@ class MainViewModel @Inject constructor(
         data class ToggleHighlight(val packageName: String) : MainIntent()
         data class TogglePin(val packageName: String) : MainIntent()
         data class SetIconSize(val dp: Int) : MainIntent()
+        data class SetThemeMode(val mode: String) : MainIntent()
         object ToggleShowAppNames : MainIntent()
         object ToggleIgnoreDynamicSize : MainIntent()
         object ToggleUseSystemWallpaper : MainIntent()
@@ -88,6 +90,11 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.useSystemWallpaperFlow.collect { use ->
                 _uiState.update { it.copy(useSystemWallpaper = use) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.themeModeFlow.collect { mode ->
+                _uiState.update { it.copy(themeMode = mode) }
             }
         }
         viewModelScope.launch {
@@ -141,14 +148,25 @@ class MainViewModel @Inject constructor(
             }
             is MainIntent.TogglePin -> {
                 val pkg = intent.packageName
-                _uiState.update { state ->
-                    val newSet = if (state.pinnedApps.contains(pkg)) state.pinnedApps - pkg else state.pinnedApps + pkg
-                    val pinnedList = state.apps.filter { newSet.contains(it.packageName) }
-                    val others = state.apps.filterNot { newSet.contains(it.packageName) }
-                        .sortedByDescending { it.totalTimeInForeground }
-                    val newApps = pinnedList + others
-                    state.copy(pinnedApps = newSet, apps = newApps)
-                }
+                  _uiState.update { state ->
+                      val isCurrentlyPinned = state.pinnedApps.contains(pkg)
+                      val newSet = if (isCurrentlyPinned) state.pinnedApps - pkg else state.pinnedApps + pkg
+
+                      val pinnedList = if (!isCurrentlyPinned) {
+                          // Newly pinned: place the newly pinned app first, then preserve order of other pinned apps
+                          val newly = state.apps.find { it.packageName == pkg }?.let { listOf(it) } ?: emptyList()
+                          val otherPinned = state.apps.filter { newSet.contains(it.packageName) && it.packageName != pkg }
+                          newly + otherPinned
+                      } else {
+                          // Unpinning or reordering: just keep apps that are pinned in their current order
+                          state.apps.filter { newSet.contains(it.packageName) }
+                      }
+
+                      val others = state.apps.filterNot { newSet.contains(it.packageName) }
+                          .sortedByDescending { it.totalTimeInForeground }
+                      val newApps = pinnedList + others
+                      state.copy(pinnedApps = newSet, apps = newApps)
+                  }
                 viewModelScope.launch {
                     val currently = _uiState.value.pinnedApps
                     if (currently.contains(pkg)) {
@@ -180,6 +198,14 @@ class MainViewModel @Inject constructor(
                 _uiState.update { it.copy(iconSizeDp = dp) }
                 viewModelScope.launch {
                     settingsRepository.setIconSize(dp)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.SetThemeMode -> {
+                val mode = intent.mode
+                _uiState.update { it.copy(themeMode = mode) }
+                viewModelScope.launch {
+                    settingsRepository.setThemeMode(mode)
                     _events.trySend(UiEvent.PreferenceSaved)
                 }
             }

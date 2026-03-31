@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
 import digital.tonima.bubbleslauncher.R
 import androidx.compose.ui.text.style.TextAlign
@@ -76,7 +78,8 @@ fun MainScreen(
             )
         }
         val maxTime = state.apps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
-        val sortedApps = state.apps.sortedByDescending { it.totalTimeInForeground }
+        // The ViewModel provides `state.apps` already ordered with pinned apps first.
+        val sortedApps = state.apps
 
         androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val cellMinWidth = 96.dp
@@ -128,7 +131,7 @@ fun MainScreen(
                                         }
                                     )
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(id = R.string.menu_uninstall)) },
+                                    text = { Text(stringResource(id = R.string.menu_app_info)) },
                                     onClick = {
                                         try {
                                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -184,6 +187,19 @@ fun AppBubble(
         ColorMatrix().apply { setToSaturation(0f) }
     }
 
+    // Convert dp size to pixels for bitmap creation and remember the scaled bitmap
+    val density = LocalDensity.current
+    val targetPx = with(density) { resolvedSize.roundToPx() }
+    val imageBitmap = remember(app.packageName, targetPx) {
+        // create a scaled bitmap to avoid large allocations during fast scroll
+        try {
+            app.icon.toBitmap(width = targetPx.coerceAtLeast(1), height = targetPx.coerceAtLeast(1)).asImageBitmap()
+        } catch (t: Throwable) {
+            // fallback to intrinsic size conversion if scaling fails
+            app.icon.toBitmap().asImageBitmap()
+        }
+    }
+
     Column(
         modifier = Modifier
             .padding(8.dp)
@@ -194,9 +210,9 @@ fun AppBubble(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Image(
-            bitmap = app.icon.toBitmap().asImageBitmap(),
+            bitmap = imageBitmap,
             contentDescription = app.appName,
-                modifier = Modifier.size(resolvedSize),
+            modifier = Modifier.size(resolvedSize),
             colorFilter = if (highlighted) null else ColorFilter.colorMatrix(grayscaleMatrix)
         )
 

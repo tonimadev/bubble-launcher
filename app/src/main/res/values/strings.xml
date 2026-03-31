@@ -8,7 +8,7 @@
     <string name="button_back">Voltar</string>
     <string name="menu_highlight">Destacar</string>
     <string name="menu_unhighlight">Remover destaque</string>
-    <string name="menu_uninstall">Desinstalar</string>
+    <string name="menu_app_info">Informações do App</string>
     <string name="label_use_system_wallpaper">Usar papel de parede do sistema</string>
     <string name="msg_preference_saved">Preferência salva</string>
     <string name="msg_highlight_saved">Destaque atualizado</string>
@@ -24,4 +24,8 @@
     <string name="menu_pin">Fixar</string>
     <string name="menu_unpin">Desafixar</string>
     <string name="msg_pin_saved">Alteração de fixação salva</string>
+    <string name="label_theme">Tema</string>
+    <string name="theme_system">Padrão do sistema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Escuro</string>
 </resources>
