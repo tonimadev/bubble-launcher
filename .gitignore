@@ -23,3 +23,5 @@ local.properties
 /.idea/deploymentTargetSelector.xml
 /.idea/git_toolbox_prj.xml
 /X#
+/.idea/.name
+/.idea/compiler.xml
