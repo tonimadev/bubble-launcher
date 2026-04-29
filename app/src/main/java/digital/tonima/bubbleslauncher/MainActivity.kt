@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -51,6 +52,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import digital.tonima.bubbleslauncher.data.Profile
 import digital.tonima.bubbleslauncher.ui.MainScreen
 import digital.tonima.bubbleslauncher.ui.MainViewModel
+import digital.tonima.bubbleslauncher.model.AppInfo
+import androidx.compose.foundation.lazy.items
+import digital.tonima.bubbleslauncher.ui.OnboardingScreen
 import digital.tonima.bubbleslauncher.ui.theme.BubblesLauncherTheme
 
 @AndroidEntryPoint
@@ -74,6 +78,15 @@ class MainActivity : ComponentActivity() {
 
                 BubblesLauncherTheme(darkTheme = useDark) {
 
+                // Show onboarding fullscreen, covering everything including the TopAppBar
+                if (!state.hasSeenOnboarding) {
+                    OnboardingScreen(
+                        onComplete = { viewModel.submitIntent(MainViewModel.MainIntent.CompleteOnboarding) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    return@BubblesLauncherTheme
+                }
+
                 val (showUsageRationale, setShowUsageRationale) = remember { mutableStateOf(false) }
                 fun hasUsageAccess(ctx: Context): Boolean {
                     return try {
@@ -85,8 +98,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(state.ignoreDynamicSize, state.apps) {
-                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity)) {
+                val (hasUsage, setHasUsage) = remember { mutableStateOf(hasUsageAccess(this@MainActivity)) }
+                LaunchedEffect(state.apps) {
+                    setHasUsage(hasUsageAccess(this@MainActivity))
+                }
+
+                LaunchedEffect(state.ignoreDynamicSize, state.apps, state.hasSeenOnboarding) {
+                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity) && state.hasSeenOnboarding) {
                         setShowUsageRationale(true)
                     } else {
                         setShowUsageRationale(false)
@@ -100,6 +118,7 @@ class MainActivity : ComponentActivity() {
                 val showAppNames = state.showAppNames
                 val showUsageBadges = state.showUsageBadges
                 val (showSettings, setShowSettings) = remember { mutableStateOf(false) }
+                val (showMetrics, setShowMetrics) = remember { mutableStateOf(false) }
                 val selectedProfile = state.selectedProfile
 
                 Scaffold(
@@ -110,6 +129,17 @@ class MainActivity : ComponentActivity() {
                             TopAppBar(
                                 title = { Text(stringResource(id = R.string.app_name)) },
                                 actions = {
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleFocusMode) }
+                                    ) {
+                                        Text(
+                                            text = stringResource(id = R.string.toggle_focus_mode),
+                                            color = if (state.isFocusModeEnabled) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    IconButton(onClick = { setShowMetrics(true) }) {
+                                        Text("📊")
+                                    }
                                     IconButton(onClick = { setShowSettings(true) }) {
                                         Text(stringResource(id = R.string.settings_icon))
                                     }
@@ -160,23 +190,62 @@ class MainActivity : ComponentActivity() {
                                     ignoreDynamicSize = state.ignoreDynamicSize,
                                     useSystemWallpaper = state.useSystemWallpaper,
                                     iconSizeDp = state.iconSizeDp,
+                                    themeMode = state.themeMode,
+                                    hiddenAppsList = state.hiddenApps.mapNotNull { pkg -> state.apps.find { it.packageName == pkg } },
                                     onToggleShowNames = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowAppNames) },
                                     onToggleShowUsageBadges = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowUsageBadges) },
                                     onToggleIgnoreDynamicSize = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleIgnoreDynamicSize) },
                                     onToggleUseSystemWallpaper = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleUseSystemWallpaper) },
                                     onSetIconSize = { dp -> viewModel.submitIntent(MainViewModel.MainIntent.SetIconSize(dp)) },
                                     onSetThemeMode = { mode: String -> viewModel.submitIntent(MainViewModel.MainIntent.SetThemeMode(mode)) },
-                                    themeMode = state.themeMode,
+                                    onUnhideApp = { pkg ->
+                                        viewModel.submitIntent(MainViewModel.MainIntent.ToggleHiddenApp(pkg)) 
+                                    },
                                     onBack = { setShowSettings(false) },
                                     modifier = Modifier.padding(innerPadding)
                                 )
+                            } else if (showMetrics) {
+                                digital.tonima.bubbleslauncher.ui.metrics.MetricsDashboardScreen(
+                                    modifier = Modifier.padding(innerPadding),
+                                    onBack = { setShowMetrics(false) }
+                                )
                             } else {
-                        MainScreen(
-                            state = state,
-                            onIntent = { intent -> viewModel.submitIntent(intent) },
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    }
+                                Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                                    if (!state.ignoreDynamicSize && !hasUsage) {
+                                        androidx.compose.material3.ElevatedCard(
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.padding(16.dp)) {
+                                                Text(stringResource(id = R.string.usage_access_title), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer)
+                                                Text(stringResource(id = R.string.usage_access_message), color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                                                Button(
+                                                    onClick = { 
+                                                        try {
+                                                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                            startActivity(intent)
+                                                        } catch (_: Exception) {}
+                                                    },
+                                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
+                                                        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer
+                                                    )
+                                                ) {
+                                                    Text(stringResource(id = R.string.usage_access_button))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    MainScreen(
+                                        state = state,
+                                        onIntent = { intent -> viewModel.submitIntent(intent) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
                 }
                 LaunchedEffect(Unit) {
                     viewModel.submitIntent(MainViewModel.MainIntent.LoadApps)
@@ -218,12 +287,14 @@ fun SettingsScreen(
     useSystemWallpaper: Boolean = false,
     iconSizeDp: Int = 64,
     themeMode: String = "system",
+    hiddenAppsList: List<AppInfo> = emptyList(),
     onToggleShowNames: () -> Unit,
     onToggleShowUsageBadges: () -> Unit = {},
     onToggleIgnoreDynamicSize: () -> Unit = {},
     onToggleUseSystemWallpaper: () -> Unit = {},
     onSetIconSize: (Int) -> Unit = {},
     onSetThemeMode: (String) -> Unit = {},
+    onUnhideApp: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(modifier = modifier.padding(16.dp)) {
@@ -272,19 +343,50 @@ fun SettingsScreen(
                 )
             }
         }
-        Text(text = stringResource(id = R.string.label_theme), modifier = Modifier.padding(top = 12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Row {
-                RadioButton(selected = themeMode == "system", onClick = { onSetThemeMode("system") })
+        Text(text = stringResource(id = R.string.label_theme), modifier = Modifier.padding(top = 16.dp, bottom = 8.dp), style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSetThemeMode("system") }
+                    .padding(vertical = 8.dp)
+            ) {
+                RadioButton(selected = themeMode == "system", onClick = null)
                 Text(text = stringResource(id = R.string.theme_system), modifier = Modifier.padding(start = 8.dp))
             }
-            Row {
-                RadioButton(selected = themeMode == "light", onClick = { onSetThemeMode("light") })
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSetThemeMode("light") }
+                    .padding(vertical = 8.dp)
+            ) {
+                RadioButton(selected = themeMode == "light", onClick = null)
                 Text(text = stringResource(id = R.string.theme_light), modifier = Modifier.padding(start = 8.dp))
             }
-            Row {
-                RadioButton(selected = themeMode == "dark", onClick = { onSetThemeMode("dark") })
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSetThemeMode("dark") }
+                    .padding(vertical = 8.dp)
+            ) {
+                RadioButton(selected = themeMode == "dark", onClick = null)
                 Text(text = stringResource(id = R.string.theme_dark), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        if (hiddenAppsList.isNotEmpty()) {
+            Text(text = stringResource(id = R.string.title_hidden_apps), modifier = Modifier.padding(top = 16.dp, bottom = 8.dp), style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+            androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                items(hiddenAppsList) { app ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(text = app.appName)
+                        androidx.compose.material3.TextButton(onClick = { onUnhideApp(app.packageName) }) {
+                            Text(stringResource(id = R.string.menu_unhide))
+                        }
+                    }
+                }
             }
         }
         Button(onClick = { onBack() }, modifier = Modifier.padding(top = 16.dp)) {

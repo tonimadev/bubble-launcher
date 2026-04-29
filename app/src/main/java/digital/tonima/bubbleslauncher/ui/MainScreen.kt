@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @SuppressLint("MissingPermission")
@@ -58,20 +59,28 @@ import java.util.concurrent.TimeUnit
 fun MainScreen(
     state: MainViewModel.MainUiState,
     onIntent: (MainViewModel.MainIntent) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bubblesViewModel: BubblesViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
     
     var menuApp by remember { mutableStateOf<AppInfo?>(null) }
+    var delayAppToLaunch by remember { mutableStateOf<AppInfo?>(null) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        val maxTime = state.apps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
-        val sortedApps = state.apps
+        MentalAquariumBackground(viewModel = bubblesViewModel)
+        
+        var visibleApps = state.apps.filter { !state.hiddenApps.contains(it.packageName) }
+        if (state.isFocusModeEnabled) {
+            visibleApps = visibleApps.filter { state.essentialApps.contains(it.packageName) }
+        }
+        val maxTime = visibleApps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
+        val sortedApps = visibleApps
 
         androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val cellMinWidth = 96.dp
@@ -95,22 +104,26 @@ fun MainScreen(
                             ignoreDynamicSize = state.ignoreDynamicSize,
                             iconSizeDp = state.iconSizeDp,
                             onClick = {
-                                try {
-                                    if (app.componentName != null && app.userHandle != null) {
-                                        val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
-                                        launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
-                                    } else {
-                                        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
-                                        if (intent != null) {
-                                            context.startActivity(intent)
-                                        }
-                                    }
-                                } catch (t: Throwable) {
+                                if (state.delayApps.contains(app.packageName)) {
+                                    delayAppToLaunch = app
+                                } else {
                                     try {
-                                        val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                            "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                        context.startActivity(infoIntent)
-                                    } catch (_: Exception) { /* ignore */ }
+                                        if (app.componentName != null && app.userHandle != null) {
+                                            val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
+                                            launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
+                                        } else {
+                                            val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                                            if (intent != null) {
+                                                context.startActivity(intent)
+                                            }
+                                        }
+                                    } catch (t: Throwable) {
+                                        try {
+                                            val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                            context.startActivity(infoIntent)
+                                        } catch (_: Exception) { /* ignore */ }
+                                    }
                                 }
                             },
                             onLongClick = { menuApp = app }
@@ -137,6 +150,29 @@ fun MainScreen(
                                             menuApp = null
                                         }
                                     )
+                                val isDelay = state.delayApps.contains(app.packageName)
+                                DropdownMenuItem(
+                                    text = { Text(if (isDelay) stringResource(id = R.string.menu_remove_delay) else stringResource(id = R.string.menu_add_delay)) },
+                                    onClick = {
+                                        onIntent(MainViewModel.MainIntent.ToggleDelayApp(app.packageName))
+                                        menuApp = null
+                                    }
+                                )
+                                val isEssential = state.essentialApps.contains(app.packageName)
+                                DropdownMenuItem(
+                                    text = { Text(if (isEssential) stringResource(id = R.string.menu_remove_essential) else stringResource(id = R.string.menu_add_essential)) },
+                                    onClick = {
+                                        onIntent(MainViewModel.MainIntent.ToggleEssentialApp(app.packageName))
+                                        menuApp = null
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(id = R.string.menu_hide)) },
+                                    onClick = {
+                                        onIntent(MainViewModel.MainIntent.ToggleHiddenApp(app.packageName))
+                                        menuApp = null
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(id = R.string.menu_app_info)) },
                                     onClick = {
@@ -163,8 +199,48 @@ fun MainScreen(
                 }
             )
         }
+    if (delayAppToLaunch != null) {
+        MindfulDelayOverlay(
+            app = delayAppToLaunch!!,
+            onCancel = { 
+                val colors = listOf(
+                    Color(0xFFFF5252), // Red
+                    Color(0xFF448AFF), // Blue
+                    Color(0xFF69F0AE), // Green
+                    Color(0xFFFFD740), // Yellow
+                    Color(0xFFE040FB), // Purple
+                    Color(0xFF18FFFF), // Cyan
+                    Color(0xFFFF4081)  // Pink
+                )
+                bubblesViewModel.onImpulseResisted(colors.random())
+                delayAppToLaunch = null 
+            },
+            onContinue = {
+                val app = delayAppToLaunch!!
+                delayAppToLaunch = null
+                try {
+                    if (app.componentName != null && app.userHandle != null) {
+                        val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
+                        launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
+                    } else {
+                        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                        if (intent != null) {
+                            context.startActivity(intent)
+                        }
+                    }
+                } catch (t: Throwable) {
+                    try {
+                        val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                        context.startActivity(infoIntent)
+                    } catch (_: Exception) { /* ignore */ }
+                }
+            }
+        )
     }
 }
+}
+
 
 @Composable
 fun AppBubble(
@@ -274,6 +350,62 @@ fun AppBubble(
                 ),
                 modifier = Modifier.padding(top = 4.dp).size(width = resolvedSize, height = 20.dp)
             )
+        }
+    }
+}
+
+@Composable
+fun MindfulDelayOverlay(
+    app: AppInfo,
+    onCancel: () -> Unit,
+    onContinue: () -> Unit
+) {
+    var timeLeft by remember { mutableStateOf(5) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (timeLeft > 0) {
+            kotlinx.coroutines.delay(1000L)
+            timeLeft--
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = { onCancel() }) {
+        androidx.compose.material3.Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(id = R.string.dialog_delay_title),
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Text(
+                    text = stringResource(id = R.string.dialog_delay_message).replace("este aplicativo", app.appName),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+                androidx.compose.foundation.layout.Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    androidx.compose.material3.TextButton(onClick = onCancel) {
+                        Text(stringResource(id = R.string.dialog_delay_cancel))
+                    }
+                    androidx.compose.material3.Button(
+                        onClick = onContinue,
+                        enabled = timeLeft == 0
+                    ) {
+                        Text(
+                            text = if (timeLeft > 0) String.format(stringResource(id = R.string.dialog_delay_continue), timeLeft) 
+                                   else stringResource(id = R.string.dialog_delay_continue_ready)
+                        )
+                    }
+                }
+            }
         }
     }
 }

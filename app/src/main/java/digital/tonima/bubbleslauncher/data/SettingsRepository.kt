@@ -29,6 +29,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val THEME_MODE = stringPreferencesKey("theme_mode")
         private val SELECTED_PROFILE = stringPreferencesKey("selected_profile")
         private val SHOW_USAGE_BADGES = booleanPreferencesKey("show_usage_badges")
+        private val DELAY_APPS = stringPreferencesKey("delay_apps_list")
+        private val ESSENTIAL_APPS = stringPreferencesKey("essential_apps_list")
+        private val HIDDEN_APPS = stringPreferencesKey("hidden_apps_list")
+        private val FOCUS_MODE_ENABLED = booleanPreferencesKey("focus_mode_enabled")
+        private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
     }
 
     private val dataStore = context.dataStore
@@ -38,7 +43,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     }
 
     val ignoreDynamicSizeFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[IGNORE_DYNAMIC_SIZE] ?: false
+        prefs[IGNORE_DYNAMIC_SIZE] ?: true
     }
 
     val iconSizeFlow: Flow<Int> = dataStore.data.map { prefs ->
@@ -74,6 +79,29 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     val showUsageBadgesFlow: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[SHOW_USAGE_BADGES] ?: true
+    }
+
+    val delayAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        val str = prefs[DELAY_APPS]
+        if (str.isNullOrEmpty()) emptyList() else str.split(",")
+    }
+
+    val essentialAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        val str = prefs[ESSENTIAL_APPS]
+        if (str.isNullOrEmpty()) emptyList() else str.split(",")
+    }
+
+    val hiddenAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        val str = prefs[HIDDEN_APPS]
+        if (str.isNullOrEmpty()) emptyList() else str.split(",")
+    }
+
+    val isFocusModeEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[FOCUS_MODE_ENABLED] ?: false
+    }
+
+    val hasSeenOnboardingFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[HAS_SEEN_ONBOARDING] ?: false
     }
 
     suspend fun setShowAppNames(value: Boolean) {
@@ -143,6 +171,26 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         dataStore.edit { prefs ->
             prefs[SHOW_USAGE_BADGES] = value
         }
+    }
+
+    suspend fun setDelayApps(values: List<String>) {
+        dataStore.edit { prefs -> prefs[DELAY_APPS] = values.joinToString(",") }
+    }
+
+    suspend fun setEssentialApps(values: List<String>) {
+        dataStore.edit { prefs -> prefs[ESSENTIAL_APPS] = values.joinToString(",") }
+    }
+
+    suspend fun setHiddenApps(values: List<String>) {
+        dataStore.edit { prefs -> prefs[HIDDEN_APPS] = values.joinToString(",") }
+    }
+
+    suspend fun setFocusModeEnabled(value: Boolean) {
+        dataStore.edit { prefs -> prefs[FOCUS_MODE_ENABLED] = value }
+    }
+
+    suspend fun setHasSeenOnboarding(value: Boolean) {
+        dataStore.edit { prefs -> prefs[HAS_SEEN_ONBOARDING] = value }
     }
 }
 

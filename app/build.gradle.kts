@@ -53,6 +53,11 @@ dependencies {
     ksp(libs.hiltCompiler)
     implementation(libs.androidxHiltNavigationCompose)
 
+    // Room
+    implementation(libs.androidxRoomRuntime)
+    implementation(libs.androidxRoomKtx)
+    ksp(libs.androidxRoomCompiler)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidxJunit)
     androidTestImplementation(libs.androidxEspressoCore)

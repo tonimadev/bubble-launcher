@@ -35,7 +35,12 @@ class MainViewModel @Inject constructor(
         val useSystemWallpaper: Boolean = false,
         val selectedProfile: Profile = Profile.PERSONAL,
         val themeMode: String = "system", // "system", "light", "dark"
-        val hasWorkProfile: Boolean = false
+        val hasWorkProfile: Boolean = false,
+        val delayApps: List<String> = emptyList(),
+        val essentialApps: List<String> = emptyList(),
+        val hiddenApps: List<String> = emptyList(),
+        val isFocusModeEnabled: Boolean = false,
+        val hasSeenOnboarding: Boolean = false
     )
 
     sealed class MainIntent {
@@ -50,6 +55,11 @@ class MainViewModel @Inject constructor(
         object ToggleUseSystemWallpaper : MainIntent()
         data class SelectProfile(val profile: Profile) : MainIntent()
         data class SetApps(val apps: List<AppInfo>) : MainIntent()
+        data class ToggleDelayApp(val packageName: String) : MainIntent()
+        data class ToggleEssentialApp(val packageName: String) : MainIntent()
+        data class ToggleHiddenApp(val packageName: String) : MainIntent()
+        object ToggleFocusMode : MainIntent()
+        object CompleteOnboarding : MainIntent()
     }
 
     private val _uiState = MutableStateFlow(MainUiState(isLoading = true))
@@ -127,6 +137,31 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.pinnedAppsFlow.collect { set ->
                 _uiState.update { it.copy(pinnedApps = set) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.delayAppsFlow.collect { list ->
+                _uiState.update { it.copy(delayApps = list) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.essentialAppsFlow.collect { list ->
+                _uiState.update { it.copy(essentialApps = list) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.hiddenAppsFlow.collect { list ->
+                _uiState.update { it.copy(hiddenApps = list) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.isFocusModeEnabledFlow.collect { enabled ->
+                _uiState.update { it.copy(isFocusModeEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.hasSeenOnboardingFlow.collect { seen ->
+                _uiState.update { it.copy(hasSeenOnboarding = seen) }
             }
         }
     }
@@ -268,6 +303,53 @@ class MainViewModel @Inject constructor(
             }
             is MainIntent.SetApps -> {
                 _uiState.update { it.copy(apps = intent.apps) }
+            }
+            is MainIntent.ToggleDelayApp -> {
+                val pkg = intent.packageName
+                _uiState.update { state ->
+                    val newList = if (state.delayApps.contains(pkg)) state.delayApps - pkg else state.delayApps + pkg
+                    state.copy(delayApps = newList)
+                }
+                viewModelScope.launch {
+                    settingsRepository.setDelayApps(_uiState.value.delayApps)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.ToggleEssentialApp -> {
+                val pkg = intent.packageName
+                _uiState.update { state ->
+                    val newList = if (state.essentialApps.contains(pkg)) state.essentialApps - pkg else state.essentialApps + pkg
+                    state.copy(essentialApps = newList)
+                }
+                viewModelScope.launch {
+                    settingsRepository.setEssentialApps(_uiState.value.essentialApps)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.ToggleHiddenApp -> {
+                val pkg = intent.packageName
+                _uiState.update { state ->
+                    val newList = if (state.hiddenApps.contains(pkg)) state.hiddenApps - pkg else state.hiddenApps + pkg
+                    state.copy(hiddenApps = newList)
+                }
+                viewModelScope.launch {
+                    settingsRepository.setHiddenApps(_uiState.value.hiddenApps)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.ToggleFocusMode -> {
+                val newValue = !_uiState.value.isFocusModeEnabled
+                _uiState.update { it.copy(isFocusModeEnabled = newValue) }
+                viewModelScope.launch {
+                    settingsRepository.setFocusModeEnabled(newValue)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.CompleteOnboarding -> {
+                _uiState.update { it.copy(hasSeenOnboarding = true) }
+                viewModelScope.launch {
+                    settingsRepository.setHasSeenOnboarding(true)
+                }
             }
         }
     }

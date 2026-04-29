@@ -25,3 +25,4 @@ local.properties
 /X#
 /.idea/.name
 /.idea/compiler.xml
+/build_log.txt
