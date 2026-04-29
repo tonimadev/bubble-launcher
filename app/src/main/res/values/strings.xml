@@ -3,6 +3,7 @@
     <string name="settings_icon">⚙</string>
     <string name="settings_title">Configurações</string>
     <string name="label_show_names">Mostrar nomes dos apps</string>
+    <string name="label_show_usage_badges">Mostrar badges de uso (tempo)</string>
     <string name="label_ignore_dynamic_size">Ignorar tamanho dinâmico das bolhas</string>
     <string name="label_icon_size">Tamanho dos ícones (dp)</string>
     <string name="button_back">Voltar</string>

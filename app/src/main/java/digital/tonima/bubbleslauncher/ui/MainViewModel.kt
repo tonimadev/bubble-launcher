@@ -26,17 +26,15 @@ class MainViewModel @Inject constructor(
     data class MainUiState(
         val apps: List<AppInfo> = emptyList(),
         val highlightedApps: Set<String> = emptySet(),
-        val pinnedApps: Set<String> = emptySet(),
+        val pinnedApps: List<String> = emptyList(),
         val showAppNames: Boolean = true,
+        val showUsageBadges: Boolean = true,
         val isLoading: Boolean = false,
-        val ignoreDynamicSize: Boolean = false
-        ,
+        val ignoreDynamicSize: Boolean = false,
         val iconSizeDp: Int = 64,
-        val useSystemWallpaper: Boolean = false
-        ,
+        val useSystemWallpaper: Boolean = false,
         val selectedProfile: Profile = Profile.PERSONAL,
-        val themeMode: String = "system" // "system", "light", "dark"
-        ,
+        val themeMode: String = "system", // "system", "light", "dark"
         val hasWorkProfile: Boolean = false
     )
 
@@ -47,6 +45,7 @@ class MainViewModel @Inject constructor(
         data class SetIconSize(val dp: Int) : MainIntent()
         data class SetThemeMode(val mode: String) : MainIntent()
         object ToggleShowAppNames : MainIntent()
+        object ToggleShowUsageBadges : MainIntent()
         object ToggleIgnoreDynamicSize : MainIntent()
         object ToggleUseSystemWallpaper : MainIntent()
         data class SelectProfile(val profile: Profile) : MainIntent()
@@ -82,6 +81,11 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.ignoreDynamicSizeFlow.collect { ignore ->
                 _uiState.update { it.copy(ignoreDynamicSize = ignore) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.showUsageBadgesFlow.collect { show ->
+                _uiState.update { it.copy(showUsageBadges = show) }
             }
         }
         viewModelScope.launch {
@@ -141,8 +145,9 @@ class MainViewModel @Inject constructor(
                     val apps = repository.getAppsForProfile(profile)
                     val sorted = apps.sortedByDescending { it.totalTimeInForeground }
                     val pinned = _uiState.value.pinnedApps
-                    val (pinnedList, others) = sorted.partition { pinned.contains(it.packageName) }
-                    val ordered = pinnedList + others
+                    val pinnedAppsList = pinned.mapNotNull { p -> apps.find { it.packageName == p } }
+                    val others = sorted.filterNot { pinned.contains(it.packageName) }
+                    val ordered = pinnedAppsList + others
                     _uiState.update { it.copy(apps = ordered, isLoading = false) }
                 } catch (t: Throwable) {
                     _uiState.update { it.copy(apps = emptyList(), isLoading = false) }
@@ -168,32 +173,23 @@ class MainViewModel @Inject constructor(
             }
             is MainIntent.TogglePin -> {
                 val pkg = intent.packageName
-                  _uiState.update { state ->
-                      val isCurrentlyPinned = state.pinnedApps.contains(pkg)
-                      val newSet = if (isCurrentlyPinned) state.pinnedApps - pkg else state.pinnedApps + pkg
+                _uiState.update { state ->
+                    val isCurrentlyPinned = state.pinnedApps.contains(pkg)
+                    val newList = if (isCurrentlyPinned) {
+                        state.pinnedApps - pkg
+                    } else {
+                        listOf(pkg) + state.pinnedApps
+                    }
 
-                      val pinnedList = if (!isCurrentlyPinned) {
-                          // Newly pinned: place the newly pinned app first, then preserve order of other pinned apps
-                          val newly = state.apps.find { it.packageName == pkg }?.let { listOf(it) } ?: emptyList()
-                          val otherPinned = state.apps.filter { newSet.contains(it.packageName) && it.packageName != pkg }
-                          newly + otherPinned
-                      } else {
-                          // Unpinning or reordering: just keep apps that are pinned in their current order
-                          state.apps.filter { newSet.contains(it.packageName) }
-                      }
-
-                      val others = state.apps.filterNot { newSet.contains(it.packageName) }
-                          .sortedByDescending { it.totalTimeInForeground }
-                      val newApps = pinnedList + others
-                      state.copy(pinnedApps = newSet, apps = newApps)
-                  }
+                    val pinnedAppsList = newList.mapNotNull { p -> state.apps.find { it.packageName == p } }
+                    val others = state.apps.filterNot { newList.contains(it.packageName) }
+                        .sortedByDescending { it.totalTimeInForeground }
+                    val newApps = pinnedAppsList + others
+                    state.copy(pinnedApps = newList, apps = newApps)
+                }
                 viewModelScope.launch {
                     val currently = _uiState.value.pinnedApps
-                    if (currently.contains(pkg)) {
-                        settingsRepository.addPin(pkg)
-                    } else {
-                        settingsRepository.removePin(pkg)
-                    }
+                    settingsRepository.setPinnedApps(currently)
                     _events.trySend(UiEvent.PinSaved)
                 }
             }
@@ -202,6 +198,14 @@ class MainViewModel @Inject constructor(
                 _uiState.update { it.copy(showAppNames = newValue) }
                 viewModelScope.launch {
                     settingsRepository.setShowAppNames(newValue)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.ToggleShowUsageBadges -> {
+                val newValue = !_uiState.value.showUsageBadges
+                _uiState.update { it.copy(showUsageBadges = newValue) }
+                viewModelScope.launch {
+                    settingsRepository.setShowUsageBadges(newValue)
                     _events.trySend(UiEvent.PreferenceSaved)
                 }
             }
@@ -249,8 +253,9 @@ class MainViewModel @Inject constructor(
                         val apps = repository.getAppsForProfile(intent.profile)
                         val sorted = apps.sortedByDescending { it.totalTimeInForeground }
                         val pinned = _uiState.value.pinnedApps
-                        val (pinnedList, others) = sorted.partition { pinned.contains(it.packageName) }
-                        val ordered = pinnedList + others
+                        val pinnedAppsList = pinned.mapNotNull { p -> apps.find { it.packageName == p } }
+                        val others = sorted.filterNot { pinned.contains(it.packageName) }
+                        val ordered = pinnedAppsList + others
                         _uiState.update { it.copy(apps = ordered, isLoading = false) }
                         if (intent.profile == Profile.WORK && apps.isEmpty()) {
                             _events.trySend(UiEvent.Message("Nenhum aplicativo encontrado no perfil de trabalho (ou permissão faltando)."))

@@ -41,10 +41,9 @@ class AppRepository @Inject constructor(
                 apps.map { resolveInfo ->
                     val packageName = resolveInfo.activityInfo.packageName
                     val appName = resolveInfo.loadLabel(packageManager).toString()
-                    val icon = resolveInfo.loadIcon(packageManager)
                     val timeInForeground = usageStats[packageName] ?: 0L
                     val component = ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name)
-                    AppInfo(packageName, appName, icon, timeInForeground, component, null)
+                    AppInfo(packageName, appName, timeInForeground, component, null)
                 }
             }
             Profile.WORK -> {
@@ -61,11 +60,10 @@ class AppRepository @Inject constructor(
                         activities.forEach { lai ->
                             val packageName = lai.applicationInfo.packageName
                             val appName = lai.label?.toString() ?: packageName
-                            val icon = lai.applicationInfo.loadIcon(packageManager)
                             val timeInForeground = usageStats[packageName] ?: 0L
                             // lai (LauncherActivityInfo) has componentName and is associated with a user
                             val comp = lai.componentName
-                            result.add(AppInfo(packageName, appName, icon, timeInForeground, comp, userHandle))
+                            result.add(AppInfo(packageName, appName, timeInForeground, comp, userHandle))
                         }
                     }
                     result

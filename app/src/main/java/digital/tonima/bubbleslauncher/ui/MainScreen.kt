@@ -43,6 +43,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import digital.tonima.bubbleslauncher.model.AppInfo
 import androidx.core.net.toUri
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @SuppressLint("MissingPermission")
@@ -55,13 +63,6 @@ fun MainScreen(
     val context = LocalContext.current
     val packageManager = context.packageManager
     
-    val wallpaperBitmap = remember {
-        runCatching {
-            val wallpaperManager = WallpaperManager.getInstance(context)
-            wallpaperManager.drawable?.toBitmap()
-        }.getOrNull()
-    }
-
     var menuApp by remember { mutableStateOf<AppInfo?>(null) }
 
     Box(
@@ -69,14 +70,6 @@ fun MainScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        if (state.useSystemWallpaper && wallpaperBitmap != null) {
-            Image(
-                bitmap = wallpaperBitmap.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
         val maxTime = state.apps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
         val sortedApps = state.apps
 
@@ -98,6 +91,7 @@ fun MainScreen(
                             maxTime = maxTime,
                             highlighted = state.highlightedApps.contains(app.packageName),
                             showName = state.showAppNames,
+                            showUsageBadges = state.showUsageBadges,
                             ignoreDynamicSize = state.ignoreDynamicSize,
                             iconSizeDp = state.iconSizeDp,
                             onClick = {
@@ -178,6 +172,7 @@ fun AppBubble(
     maxTime: Long,
     highlighted: Boolean,
     showName: Boolean,
+    showUsageBadges: Boolean,
     ignoreDynamicSize: Boolean,
     iconSizeDp: Int,
     onClick: () -> Unit,
@@ -201,11 +196,27 @@ fun AppBubble(
 
     val density = LocalDensity.current
     val targetPx = with(density) { resolvedSize.roundToPx() }
-    val imageBitmap = remember(app.packageName, targetPx) {
-        try {
-            app.icon.toBitmap(width = targetPx.coerceAtLeast(1), height = targetPx.coerceAtLeast(1)).asImageBitmap()
-        } catch (t: Throwable) {
-            app.icon.toBitmap().asImageBitmap()
+    val context = LocalContext.current
+    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, app.packageName, targetPx) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                val pm = context.packageManager
+                val drawable = if (app.userHandle != null) {
+                    val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
+                    val activities = launcherApps?.getActivityList(app.packageName, app.userHandle)
+                    activities?.firstOrNull()?.getBadgedIcon(0) ?: pm.getApplicationIcon(app.packageName)
+                } else {
+                    pm.getApplicationIcon(app.packageName)
+                }
+                
+                try {
+                    drawable.toBitmap(width = targetPx.coerceAtLeast(1), height = targetPx.coerceAtLeast(1)).asImageBitmap()
+                } catch (t: Throwable) {
+                    drawable.toBitmap().asImageBitmap()
+                }
+            } catch (e: Exception) {
+                null
+            }
         }
     }
 
@@ -218,12 +229,33 @@ fun AppBubble(
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Image(
-            bitmap = imageBitmap,
-            contentDescription = app.appName,
-            modifier = Modifier.size(resolvedSize),
-            colorFilter = if (highlighted) null else ColorFilter.colorMatrix(grayscaleMatrix)
-        )
+        Box(modifier = Modifier.size(resolvedSize)) {
+            val currentImage = imageBitmap
+            if (currentImage != null) {
+                Image(
+                    bitmap = currentImage,
+                    contentDescription = app.appName,
+                    modifier = Modifier.fillMaxSize(),
+                    colorFilter = if (highlighted) null else ColorFilter.colorMatrix(grayscaleMatrix)
+                )
+            }
+            if (showUsageBadges && app.totalTimeInForeground > 0) {
+                val minutes = TimeUnit.MILLISECONDS.toMinutes(app.totalTimeInForeground)
+                if (minutes > 0) {
+                    val hours = minutes / 60
+                    val mins = minutes % 60
+                    val timeStr = if (hours > 0) "${hours}h${mins}m" else "${mins}m"
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(text = timeStr, fontSize = 10.sp, color = Color.White)
+                    }
+                }
+            }
+        }
 
         if (showName && resolvedSize >= 60.dp) {
             Text(
@@ -232,6 +264,14 @@ fun AppBubble(
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
+                style = androidx.compose.ui.text.TextStyle(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.background,
+                        offset = androidx.compose.ui.geometry.Offset(0f, 2f),
+                        blurRadius = 8f
+                    )
+                ),
                 modifier = Modifier.padding(top = 4.dp).size(width = resolvedSize, height = 20.dp)
             )
         }

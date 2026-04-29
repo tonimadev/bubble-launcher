@@ -57,18 +57,11 @@ import digital.tonima.bubbleslauncher.ui.theme.BubblesLauncherTheme
 class MainActivity : ComponentActivity() {
     
     private val viewModel: MainViewModel by viewModels()
-    private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        permissionLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { _result ->
-            viewModel.submitIntent(MainViewModel.MainIntent.LoadApps)
-        }
         setContent {
                 val state by viewModel.uiState.collectAsState()
 
@@ -80,27 +73,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 BubblesLauncherTheme(darkTheme = useDark) {
-                    val (isRationaleVisible, setRationaleVisible) = remember { mutableStateOf(false) }
-                    LaunchedEffect(Unit) {
-                        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
-                        } else {
-                            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-                        }
-                        val allGranted = needed.all { perm ->
-                            ContextCompat.checkSelfPermission(this@MainActivity, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        }
-                        if (!allGranted) {
-                            val shouldShow = needed.any { perm ->
-                                ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, perm)
-                            }
-                            if (shouldShow) {
-                                setRationaleVisible(true)
-                            } else {
-                                permissionLauncher.launch(needed)
-                            }
-                        }
-                    }
 
                 val (showUsageRationale, setShowUsageRationale) = remember { mutableStateOf(false) }
                 fun hasUsageAccess(ctx: Context): Boolean {
@@ -126,56 +98,41 @@ class MainActivity : ComponentActivity() {
                 val highlightSavedMsg = stringResource(id = R.string.msg_highlight_saved)
                 val pinSavedMsg = stringResource(id = R.string.msg_pin_saved)
                 val showAppNames = state.showAppNames
+                val showUsageBadges = state.showUsageBadges
                 val (showSettings, setShowSettings) = remember { mutableStateOf(false) }
                 val selectedProfile = state.selectedProfile
 
-                Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
-                    Column {
-                        TopAppBar(
-                            title = { Text(stringResource(id = R.string.app_name)) },
-                            actions = {
-                                IconButton(onClick = { setShowSettings(true) }) {
-                                    Text(stringResource(id = R.string.settings_icon))
-                                }
-                            }
-                        )
-                        if (state.hasWorkProfile) {
-                            PrimaryTabRow(selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1) {
-                                Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
-                                    Text(stringResource(id = R.string.tab_personal))
-                                }
-                                Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
-                                    Text(stringResource(id = R.string.tab_work))
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = if (state.useSystemWallpaper) androidx.compose.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.65f) else androidx.compose.material3.MaterialTheme.colorScheme.background,
+                    topBar = {
+                        Column {
+                            TopAppBar(
+                                title = { Text(stringResource(id = R.string.app_name)) },
+                                actions = {
+                                    IconButton(onClick = { setShowSettings(true) }) {
+                                        Text(stringResource(id = R.string.settings_icon))
+                                    }
+                                },
+                                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                                    containerColor = if (state.useSystemWallpaper) androidx.compose.ui.graphics.Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.surface
+                                )
+                            )
+                            if (state.hasWorkProfile) {
+                                PrimaryTabRow(
+                                    selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1,
+                                    containerColor = if (state.useSystemWallpaper) androidx.compose.ui.graphics.Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.surface
+                                ) {
+                                    Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
+                                        Text(stringResource(id = R.string.tab_personal))
+                                    }
+                                    Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
+                                        Text(stringResource(id = R.string.tab_work))
+                                    }
                                 }
                             }
                         }
-                    }
-                }, snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
-                            if (isRationaleVisible) {
-                                AlertDialog(
-                                    onDismissRequest = { setRationaleVisible(false) },
-                                    title = { Text(stringResource(id = R.string.permission_rationale_title)) },
-                                    text = { Text(stringResource(id = R.string.permission_rationale_message)) },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            setRationaleVisible(false)
-                                            val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
-                                            } else {
-                                                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-                                            }
-                                            permissionLauncher.launch(needed)
-                                        }) {
-                                            Text(stringResource(id = R.string.permission_rationale_ok))
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { setRationaleVisible(false) }) {
-                                            Text(stringResource(id = R.string.permission_rationale_cancel))
-                                        }
-                                    }
-                                )
-                            }
+                    }, snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
                             if (showUsageRationale) {
                                 AlertDialog(
                                     onDismissRequest = { setShowUsageRationale(false) },
@@ -199,10 +156,12 @@ class MainActivity : ComponentActivity() {
                             if (showSettings) {
                                 SettingsScreen(
                                     showNames = showAppNames,
+                                    showUsageBadges = showUsageBadges,
                                     ignoreDynamicSize = state.ignoreDynamicSize,
                                     useSystemWallpaper = state.useSystemWallpaper,
                                     iconSizeDp = state.iconSizeDp,
                                     onToggleShowNames = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowAppNames) },
+                                    onToggleShowUsageBadges = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowUsageBadges) },
                                     onToggleIgnoreDynamicSize = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleIgnoreDynamicSize) },
                                     onToggleUseSystemWallpaper = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleUseSystemWallpaper) },
                                     onSetIconSize = { dp -> viewModel.submitIntent(MainViewModel.MainIntent.SetIconSize(dp)) },
@@ -254,11 +213,13 @@ class MainActivity : ComponentActivity() {
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     showNames: Boolean,
+    showUsageBadges: Boolean = true,
     ignoreDynamicSize: Boolean = false,
     useSystemWallpaper: Boolean = false,
     iconSizeDp: Int = 64,
     themeMode: String = "system",
     onToggleShowNames: () -> Unit,
+    onToggleShowUsageBadges: () -> Unit = {},
     onToggleIgnoreDynamicSize: () -> Unit = {},
     onToggleUseSystemWallpaper: () -> Unit = {},
     onSetIconSize: (Int) -> Unit = {},
@@ -270,6 +231,10 @@ fun SettingsScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = stringResource(id = R.string.label_show_names))
             Switch(checked = showNames, onCheckedChange = { onToggleShowNames() })
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = stringResource(id = R.string.label_show_usage_badges))
+            Switch(checked = showUsageBadges, onCheckedChange = { onToggleShowUsageBadges() })
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = stringResource(id = R.string.label_ignore_dynamic_size))

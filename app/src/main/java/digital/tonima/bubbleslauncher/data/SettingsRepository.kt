@@ -24,9 +24,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val ICON_SIZE = intPreferencesKey("icon_size_dp")
         private val USE_SYSTEM_WALLPAPER = booleanPreferencesKey("use_system_wallpaper")
         private val HIGHLIGHTED_APPS = stringSetPreferencesKey("highlighted_apps")
-        private val PINNED_APPS = stringSetPreferencesKey("pinned_apps")
+        private val PINNED_APPS = stringPreferencesKey("pinned_apps_list") // Migrated to String for ordering
+        private val PINNED_APPS_LEGACY = stringSetPreferencesKey("pinned_apps") // To handle legacy data
         private val THEME_MODE = stringPreferencesKey("theme_mode")
         private val SELECTED_PROFILE = stringPreferencesKey("selected_profile")
+        private val SHOW_USAGE_BADGES = booleanPreferencesKey("show_usage_badges")
     }
 
     private val dataStore = context.dataStore
@@ -39,7 +41,6 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         prefs[IGNORE_DYNAMIC_SIZE] ?: false
     }
 
-    // fixed icon size in dp when ignoreDynamicSize is enabled
     val iconSizeFlow: Flow<Int> = dataStore.data.map { prefs ->
         prefs[ICON_SIZE] ?: 64
     }
@@ -52,18 +53,27 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         prefs[HIGHLIGHTED_APPS] ?: emptySet()
     }
 
-    val pinnedAppsFlow: Flow<Set<String>> = dataStore.data.map { prefs ->
-        prefs[PINNED_APPS] ?: emptySet()
+    val pinnedAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        val pinnedStr = prefs[PINNED_APPS]
+        if (pinnedStr != null) {
+            if (pinnedStr.isEmpty()) emptyList() else pinnedStr.split(",")
+        } else {
+            // Check legacy
+            val legacy = prefs[PINNED_APPS_LEGACY]
+            legacy?.toList() ?: emptyList()
+        }
     }
 
-    // theme mode stored as string: "system", "light", "dark"
     val themeModeFlow: Flow<String> = dataStore.data.map { prefs ->
         prefs[THEME_MODE] ?: "system"
     }
 
-    // selected profile stored as string: "personal" or "work"
     val selectedProfileFlow: Flow<String> = dataStore.data.map { prefs ->
         prefs[SELECTED_PROFILE] ?: "personal"
+    }
+
+    val showUsageBadgesFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SHOW_USAGE_BADGES] ?: true
     }
 
     suspend fun setShowAppNames(value: Boolean) {
@@ -90,9 +100,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         }
     }
 
-    suspend fun setPinnedApps(values: Set<String>) {
+    suspend fun setPinnedApps(values: List<String>) {
         dataStore.edit { prefs ->
-            prefs[PINNED_APPS] = values
+            prefs[PINNED_APPS] = values.joinToString(",")
+            prefs.remove(PINNED_APPS_LEGACY) // clear legacy once migrated
         }
     }
 
@@ -103,24 +114,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         }
     }
 
-    suspend fun addPin(pkg: String) {
-        dataStore.edit { prefs ->
-            val current = prefs[PINNED_APPS] ?: emptySet()
-            prefs[PINNED_APPS] = current + pkg
-        }
-    }
-
     suspend fun removeHighlight(pkg: String) {
         dataStore.edit { prefs ->
             val current = prefs[HIGHLIGHTED_APPS] ?: emptySet()
             prefs[HIGHLIGHTED_APPS] = current - pkg
-        }
-    }
-
-    suspend fun removePin(pkg: String) {
-        dataStore.edit { prefs ->
-            val current = prefs[PINNED_APPS] ?: emptySet()
-            prefs[PINNED_APPS] = current - pkg
         }
     }
 
@@ -139,6 +136,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setSelectedProfile(value: String) {
         dataStore.edit { prefs ->
             prefs[SELECTED_PROFILE] = value
+        }
+    }
+
+    suspend fun setShowUsageBadges(value: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[SHOW_USAGE_BADGES] = value
         }
     }
 }
