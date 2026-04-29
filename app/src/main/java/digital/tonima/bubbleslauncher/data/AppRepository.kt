@@ -70,8 +70,6 @@ class AppRepository @Inject constructor(
                         }
                     }
                     result
-                        // Same deduplication for work profile: multiple launcher activities per package
-                        .distinctBy { "${it.packageName}_${it.userHandle}" }
                 } catch (e: Exception) {
                     Log.w("AppRepository", "Failed to load work profile apps", e)
                     emptyList()

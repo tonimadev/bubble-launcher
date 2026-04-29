@@ -1,12 +1,6 @@
 package digital.tonima.bubbleslauncher
 
-import android.app.AppOpsManager
-import android.app.role.RoleManager
-import android.content.Intent
-import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
+import androidx.compose.material3.Switch
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -25,12 +19,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,16 +36,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlin.math.max
 import kotlin.math.roundToInt
 import dagger.hilt.android.AndroidEntryPoint
 import digital.tonima.bubbleslauncher.data.Profile
 import digital.tonima.bubbleslauncher.ui.MainScreen
 import digital.tonima.bubbleslauncher.ui.MainViewModel
 import digital.tonima.bubbleslauncher.model.AppInfo
-import androidx.compose.foundation.lazy.items
 import digital.tonima.bubbleslauncher.ui.OnboardingScreen
 import digital.tonima.bubbleslauncher.ui.theme.BubblesLauncherTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import android.app.AppOpsManager
+import android.app.role.RoleManager
+import android.content.Intent
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.core.net.toUri
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -101,16 +117,12 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val (hasUsage, setHasUsage) = remember { mutableStateOf(hasUsageAccess(this@MainActivity)) }
-                LaunchedEffect(state.apps) {
-                    setHasUsage(hasUsageAccess(this@MainActivity))
-                }
+                val needsUsageAccess = !state.ignoreDynamicSize || state.showUsageBadges
 
-                LaunchedEffect(state.ignoreDynamicSize, state.apps) {
-                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity)) {
-                        setShowUsageRationale(true)
-                    } else {
-                        setShowUsageRationale(false)
-                    }
+                LaunchedEffect(state.apps, state.ignoreDynamicSize, state.showUsageBadges) {
+                    val usageGranted = hasUsageAccess(this@MainActivity)
+                    setHasUsage(usageGranted)
+                    setShowUsageRationale(needsUsageAccess && !usageGranted)
                 }
 
                 LaunchedEffect(state.apps, dismissedDefaultLauncherPromptThisSession) {
@@ -135,39 +147,49 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = if (state.useSystemWallpaper) androidx.compose.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.65f) else androidx.compose.material3.MaterialTheme.colorScheme.background,
                     topBar = {
-                        Column {
-                            TopAppBar(
-                                title = { Text(stringResource(id = R.string.app_name)) },
-                                actions = {
-                                    TextButton(
-                                        onClick = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleFocusMode) }
-                                    ) {
-                                        Text(
-                                            text = stringResource(id = R.string.toggle_focus_mode),
-                                            color = if (state.isFocusModeEnabled) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                        if (!showSettings && !showMetrics) {
+                            Column(
+                                modifier = Modifier
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                            )
                                         )
-                                    }
-                                    IconButton(onClick = { setShowMetrics(true) }) {
-                                        Text("📊")
-                                    }
-                                    IconButton(onClick = { setShowSettings(true) }) {
-                                        Text(stringResource(id = R.string.settings_icon))
-                                    }
-                                },
-                                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                                    containerColor = if (state.useSystemWallpaper) androidx.compose.ui.graphics.Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.surface
+                                    )
+                                    .shadow(4.dp)
+                            ) {
+                                TopAppBar(
+                                    title = { Text(stringResource(id = R.string.app_name)) },
+                                    actions = {
+                                        TextButton(
+                                            onClick = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleFocusMode) }
+                                        ) {
+                                            Text(
+                                                text = stringResource(id = R.string.toggle_focus_mode),
+                                                color = if (state.isFocusModeEnabled) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        TextButton(onClick = { setShowSettings(true) }) {
+                                            Text(stringResource(id = R.string.settings_title))
+                                        }
+                                    },
+                                    colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                                        containerColor = androidx.compose.ui.graphics.Color.Transparent
+                                    )
                                 )
-                            )
-                            if (state.hasWorkProfile) {
-                                PrimaryTabRow(
-                                    selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1,
-                                    containerColor = if (state.useSystemWallpaper) androidx.compose.ui.graphics.Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.surface
-                                ) {
-                                    Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
-                                        Text(stringResource(id = R.string.tab_personal))
-                                    }
-                                    Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
-                                        Text(stringResource(id = R.string.tab_work))
+                                if (state.hasWorkProfile) {
+                                    PrimaryTabRow(
+                                        selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1,
+                                        containerColor = androidx.compose.ui.graphics.Color.Transparent
+                                    ) {
+                                        Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
+                                            Text(stringResource(id = R.string.tab_personal))
+                                        }
+                                        Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
+                                            Text(stringResource(id = R.string.tab_work))
+                                        }
                                     }
                                 }
                             }
@@ -224,6 +246,7 @@ class MainActivity : ComponentActivity() {
                                     iconSizeDp = state.iconSizeDp,
                                     themeMode = state.themeMode,
                                     hiddenAppsList = state.hiddenApps.mapNotNull { pkg -> state.apps.find { it.packageName == pkg } },
+                                    hiddenAppPackages = state.hiddenApps,
                                     onToggleShowNames = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowAppNames) },
                                     onToggleShowUsageBadges = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowUsageBadges) },
                                     onToggleIgnoreDynamicSize = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleIgnoreDynamicSize) },
@@ -232,6 +255,10 @@ class MainActivity : ComponentActivity() {
                                     onSetThemeMode = { mode: String -> viewModel.submitIntent(MainViewModel.MainIntent.SetThemeMode(mode)) },
                                     onUnhideApp = { pkg ->
                                         viewModel.submitIntent(MainViewModel.MainIntent.ToggleHiddenApp(pkg)) 
+                                    },
+                                    onOpenMetrics = {
+                                        setShowSettings(false)
+                                        setShowMetrics(true)
                                     },
                                     onBack = { setShowSettings(false) },
                                     modifier = Modifier.padding(innerPadding)
@@ -243,7 +270,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             } else {
                                 Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                                    if (!state.ignoreDynamicSize && !hasUsage) {
+                                    if (needsUsageAccess && !hasUsage) {
                                         androidx.compose.material3.ElevatedCard(
                                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                                             colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
@@ -385,6 +412,7 @@ fun SettingsScreen(
     iconSizeDp: Int = 64,
     themeMode: String = "system",
     hiddenAppsList: List<AppInfo> = emptyList(),
+    hiddenAppPackages: List<String> = emptyList(),
     onToggleShowNames: () -> Unit,
     onToggleShowUsageBadges: () -> Unit = {},
     onToggleIgnoreDynamicSize: () -> Unit = {},
@@ -392,102 +420,317 @@ fun SettingsScreen(
     onSetIconSize: (Int) -> Unit = {},
     onSetThemeMode: (String) -> Unit = {},
     onUnhideApp: (String) -> Unit = {},
+    onOpenMetrics: () -> Unit = {},
     onBack: () -> Unit
 ) {
-    Column(modifier = modifier.padding(16.dp)) {
-        Text(text = stringResource(id = R.string.settings_title), modifier = Modifier.padding(bottom = 8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = stringResource(id = R.string.label_show_names))
-            Switch(checked = showNames, onCheckedChange = { onToggleShowNames() })
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(id = R.string.settings_title),
+                style = androidx.compose.material3.MaterialTheme.typography.headlineLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold
+            )
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = stringResource(id = R.string.label_show_usage_badges))
-            Switch(checked = showUsageBadges, onCheckedChange = { onToggleShowUsageBadges() })
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = stringResource(id = R.string.label_ignore_dynamic_size))
-            Switch(checked = ignoreDynamicSize, onCheckedChange = { onToggleIgnoreDynamicSize() })
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = stringResource(id = R.string.label_use_system_wallpaper))
-            Switch(checked = useSystemWallpaper, onCheckedChange = { onToggleUseSystemWallpaper() })
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Column {
-                val min = 32f
-                val maxValue = 128f
-                val stepSize = 10f
-                val stepsCount = ((maxValue - min) / stepSize).roundToInt()
-                val stepsParam = max(0, stepsCount - 1)
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(text = stringResource(id = R.string.label_icon_size))
-                    Text(text = "${iconSizeDp} dp")
+        // APARÊNCIA SECTION
+        SettingsSectionCard(
+            title = "Aparencia",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Show Names Toggle
+                    SettingsToggleItem(
+                        label = stringResource(id = R.string.label_show_names),
+                        description = "Exibir nomes dos aplicativos",
+                        checked = showNames,
+                        onCheckedChange = { onToggleShowNames() }
+                    )
+
+                    // Usage Badges Toggle
+                    SettingsToggleItem(
+                        label = stringResource(id = R.string.label_show_usage_badges),
+                        description = "Mostrar tempo de uso",
+                        checked = showUsageBadges,
+                        onCheckedChange = { onToggleShowUsageBadges() }
+                    )
+
+                    // System Wallpaper Toggle
+                    SettingsToggleItem(
+                        label = stringResource(id = R.string.label_use_system_wallpaper),
+                        description = "Usar papel de parede do sistema",
+                        checked = useSystemWallpaper,
+                        onCheckedChange = { onToggleUseSystemWallpaper() }
+                    )
+
+                    // Icon Size Slider
+                    SettingsSliderItem(
+                        label = stringResource(id = R.string.label_icon_size),
+                        description = "Tamanho dos ícones: ${iconSizeDp} dp",
+                        value = iconSizeDp.toFloat(),
+                        onValueChange = { raw ->
+                            val stepSize = 10f
+                            val rounded = (raw / stepSize).roundToInt() * stepSize
+                            val intRounded = rounded.toInt()
+                            if (intRounded != iconSizeDp) {
+                                onSetIconSize(intRounded)
+                            }
+                        },
+                        min = 32f,
+                        max = 128f,
+                        enabled = ignoreDynamicSize
+                    )
                 }
+            }
+        )
 
-                androidx.compose.material3.Slider(
-                    value = iconSizeDp.toFloat(),
-                    onValueChange = { raw ->
-                        val rounded = (raw / stepSize).roundToInt() * stepSize
-                        val intRounded = rounded.toInt()
-                        if (intRounded != iconSizeDp) {
-                            onSetIconSize(intRounded)
-                        }
-                    },
-                    valueRange = min..maxValue,
-                    steps = stepsParam,
-                    enabled = ignoreDynamicSize
-                )
+        // COMPORTAMENTO SECTION
+        SettingsSectionCard(
+            title = "Comportamento",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingsToggleItem(
+                        label = stringResource(id = R.string.label_ignore_dynamic_size),
+                        description = "Usar tamanho fixo para ícones",
+                        checked = ignoreDynamicSize,
+                        onCheckedChange = { onToggleIgnoreDynamicSize() }
+                    )
+                }
             }
-        }
-        Text(text = stringResource(id = R.string.label_theme), modifier = Modifier.padding(top = 16.dp, bottom = 8.dp), style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSetThemeMode("system") }
-                    .padding(vertical = 8.dp)
-            ) {
-                RadioButton(selected = themeMode == "system", onClick = null)
-                Text(text = stringResource(id = R.string.theme_system), modifier = Modifier.padding(start = 8.dp))
-            }
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSetThemeMode("light") }
-                    .padding(vertical = 8.dp)
-            ) {
-                RadioButton(selected = themeMode == "light", onClick = null)
-                Text(text = stringResource(id = R.string.theme_light), modifier = Modifier.padding(start = 8.dp))
-            }
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSetThemeMode("dark") }
-                    .padding(vertical = 8.dp)
-            ) {
-                RadioButton(selected = themeMode == "dark", onClick = null)
-                Text(text = stringResource(id = R.string.theme_dark), modifier = Modifier.padding(start = 8.dp))
-            }
-        }
-        if (hiddenAppsList.isNotEmpty()) {
-            Text(text = stringResource(id = R.string.title_hidden_apps), modifier = Modifier.padding(top = 16.dp, bottom = 8.dp), style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-            androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
-                items(hiddenAppsList) { app ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Text(text = app.appName)
-                        TextButton(onClick = { onUnhideApp(app.packageName) }) {
-                            Text(stringResource(id = R.string.menu_unhide))
-                        }
+        )
+
+        // TEMA SECTION
+        SettingsSectionCard(
+            title = "Tema",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf(
+                        "system" to stringResource(id = R.string.theme_system),
+                        "light" to stringResource(id = R.string.theme_light),
+                        "dark" to stringResource(id = R.string.theme_dark)
+                    ).forEach { (mode, label) ->
+                        SettingsRadioItem(
+                            label = label,
+                            selected = themeMode == mode,
+                            onClick = { onSetThemeMode(mode) }
+                        )
                     }
                 }
             }
+        )
+
+        SettingsSectionCard(
+            title = stringResource(id = R.string.metrics_title),
+            content = {
+                Button(
+                    onClick = onOpenMetrics,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
+                    Text(text = stringResource(id = R.string.metrics_title))
+                }
+            }
+        )
+
+        // HIDDEN APPS SECTION
+        if (hiddenAppsList.isNotEmpty() || hiddenAppPackages.isNotEmpty()) {
+            val hiddenAppsByPackage = hiddenAppsList.associateBy { it.packageName }
+            SettingsSectionCard(
+                title = "Aplicativos ocultos (${hiddenAppPackages.size})",
+                content = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        hiddenAppPackages.forEach { pkg ->
+                            val app = hiddenAppsByPackage[pkg]
+                            val appLabel = app?.appName ?: pkg
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = appLabel,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                )
+                                TextButton(onClick = { onUnhideApp(pkg) }) {
+                                    Text(stringResource(id = R.string.menu_unhide))
+                                }
+                            }
+                        }
+                    }
+                }
+            )
         }
-        Button(onClick = { onBack() }, modifier = Modifier.padding(top = 16.dp)) {
-            Text(stringResource(id = R.string.button_back))
+
+        // Back Button
+        Button(
+            onClick = { onBack() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(top = 8.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.button_back),
+                fontSize = 16.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+fun SettingsSectionCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    androidx.compose.material3.ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(5.dp, androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                            androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        )
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                Text(
+                    text = title,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+fun SettingsToggleItem(
+    label: String,
+    description: String? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = label,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            if (description != null) {
+                Text(
+                    text = description,
+                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        }
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+fun SettingsSliderItem(
+    label: String,
+    description: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    min: Float,
+    max: Float,
+    enabled: Boolean = true
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Text(
+                text = description,
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        androidx.compose.material3.Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = min..max,
+            steps = ((max - min) / 10f).roundToInt() - 1,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun SettingsRadioItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(
+            text = label,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+        )
     }
 }

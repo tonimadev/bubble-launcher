@@ -178,8 +178,8 @@ fun MentalAquariumBackground(
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        // Read tick so Canvas observes state and redraws every frame
-        tick
+        // Read the tick to observe the state and force this block to re-execute every frame
+        val currentTick = tick
 
         // Update physics boundaries based on actual canvas dimensions
         viewModel.updateScreenDimensions(size.width, size.height)

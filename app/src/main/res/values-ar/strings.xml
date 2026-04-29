@@ -55,14 +55,4 @@
     <string name="onboarding_title_4">تحكم كامل</string>
     <string name="onboarding_desc_4">اضغط مطولاً على أي تطبيق لتثبيته، إخفائه، أو إضافة تأخير واعي.</string>
     <string name="onboarding_btn_next">التالي</string>
-    <string name="metrics_title">تقدمك</string>
-    <string name="metrics_time_saved_today">الوقت الموفر اليوم</string>
-    <string name="metrics_time_reclaimed">وقت استُعيد لما يهمك</string>
-    <string name="metrics_daily_win_rate">معدل الفوز اليومي</string>
-    <string name="metrics_lifetime_bubbles">إجمالي الفقاعات</string>
-    <string name="metrics_time_saved_month">الوقت الموفر هذا الشهر</string>
-    <string name="default_launcher_prompt_title">تعيين المشغل الافتراضي</string>
-    <string name="default_launcher_prompt_message">للحصول على التجربة الكاملة، عيّن Bubbles Launcher كمشغل النظام الافتراضي.</string>
-    <string name="default_launcher_prompt_action">تعيين الآن</string>
-    <string name="default_launcher_prompt_unavailable">تعذر فتح شاشة المشغل الافتراضي.</string>
 </resources>

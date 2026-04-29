@@ -55,14 +55,4 @@
     <string name="onboarding_title_4">Полный Контроль</string>
     <string name="onboarding_desc_4">Долгое нажатие на приложение позволяет закрепить его, скрыть или добавить Осознанную Задержку.</string>
     <string name="onboarding_btn_next">Далее</string>
-    <string name="metrics_title">Ваш Прогресс</string>
-    <string name="metrics_time_saved_today">Сэкономлено Сегодня</string>
-    <string name="metrics_time_reclaimed">Время возвращено для важного</string>
-    <string name="metrics_daily_win_rate">Дневной Процент Побед</string>
-    <string name="metrics_lifetime_bubbles">Всего Пузырей</string>
-    <string name="metrics_time_saved_month">Сэкономлено В Этом Месяце</string>
-    <string name="default_launcher_prompt_title">Сделать лаунчером по умолчанию</string>
-    <string name="default_launcher_prompt_message">Чтобы получить полный опыт, установите Bubbles Launcher как лаунчер системы по умолчанию.</string>
-    <string name="default_launcher_prompt_action">Установить сейчас</string>
-    <string name="default_launcher_prompt_unavailable">Не удалось открыть экран лаунчера по умолчанию.</string>
 </resources>

@@ -51,17 +51,27 @@
     <string name="onboarding_desc_2">As bolhas dos apps crescem quanto mais você os usa, ajudando a controlar seu tempo de tela.</string>
     <string name="onboarding_title_3">Modo Foco</string>
     <string name="onboarding_desc_3">Escolha seus apps essenciais e ative o Modo Foco para esconder instantaneamente todas as distrações.</string>
-    <string name="onboarding_title_4">Controle Total</string>
-    <string name="onboarding_desc_4">Pressione e segure qualquer app para Fixar no topo, Ocultar ou adicionar um Atraso Consciente.</string>
-    <string name="onboarding_btn_next">Próximo</string>
-    <string name="metrics_title">Seu Progresso</string>
-    <string name="metrics_time_saved_today">Tempo Economizado Hoje</string>
-    <string name="metrics_time_reclaimed">Tempo recuperado para o que importa</string>
-    <string name="metrics_daily_win_rate">Taxa de Vitória Diária</string>
-    <string name="metrics_lifetime_bubbles">Bolhas Totais</string>
-    <string name="metrics_time_saved_month">Tempo Economizado Este Mês</string>
-    <string name="default_launcher_prompt_title">Definir launcher padrão</string>
-    <string name="default_launcher_prompt_message">Para usar toda a experiência, defina o Bubbles Launcher como launcher padrão do sistema.</string>
-    <string name="default_launcher_prompt_action">Definir agora</string>
-    <string name="default_launcher_prompt_unavailable">Não foi possível abrir a tela de launcher padrão.</string>
-</resources>
+     <string name="onboarding_title_4">Controle Total</string>
+     <string name="onboarding_desc_4">Pressione e segure qualquer app para Fixar no topo, Ocultar ou adicionar um Atraso Consciente.</string>
+     <string name="onboarding_btn_next">Próximo</string>
+
+     <!-- Metrics Strings -->
+     <string name="metrics_title">Suas conquistas</string>
+     <string name="metrics_time_saved_today">Tempo economizado hoje</string>
+     <string name="metrics_time_reclaimed">Você resistiu a impulsos e reclamou seu tempo!</string>
+     <string name="metrics_daily_win_rate">Taxa de sucesso diaria</string>
+     <string name="metrics_lifetime_bubbles">Bolhas criadas</string>
+     <string name="metrics_time_saved_month">Tempo economizado este mes</string>
+
+     <!-- Default Launcher Strings -->
+     <string name="default_launcher_prompt_title">Definir como Launcher Padrão?</string>
+     <string name="default_launcher_prompt_message">Defina o Bubbles Launcher como seu launcher padrão para aproveitar toda a sua funcionalidade!</string>
+     <string name="default_launcher_prompt_action">Definir como Padrão</string>
+     <string name="default_launcher_prompt_unavailable">Não foi possível abrir configurações do launcher. Por favor, tente manualmente nas configurações do sistema.</string>
+
+     <!-- Main Sections -->
+     <string name="section_favorites_title">Favoritos</string>
+     <string name="section_used_today_title">Usados hoje</string>
+     <string name="section_used_today_subtitle">Apps que voce usou hoje</string>
+     <string name="section_all_apps_title">Todos os apps</string>
+ </resources>

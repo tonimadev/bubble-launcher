@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.derivedStateOf
@@ -43,6 +44,7 @@ import androidx.core.net.toUri
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,7 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
-    
+
     var menuApp by remember { mutableStateOf<AppInfo?>(null) }
     var delayAppToLaunch by remember { mutableStateOf<AppInfo?>(null) }
 
@@ -96,160 +98,304 @@ fun MainScreen(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 8.dp,
+                vertical = 8.dp
+            ),
             content = {
-                // key = packageName + userHandle ensures uniqueness even when the same package
-                // exists in both personal and work profiles (same packageName, different userHandle)
-                items(visibleApps, key = { "${it.packageName}_${it.userHandle}" }) { app ->
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        AppBubble(
-                            app = app,
-                            maxTime = maxTime,
-                            highlighted = state.highlightedApps.contains(app.packageName),
-                            showName = state.showAppNames,
-                            showUsageBadges = state.showUsageBadges,
-                            ignoreDynamicSize = state.ignoreDynamicSize,
-                            iconSizeDp = state.iconSizeDp,
-                            onClick = {
-                                if (state.delayApps.contains(app.packageName)) {
-                                    delayAppToLaunch = app
-                                } else {
-                                    try {
-                                        if (app.componentName != null && app.userHandle != null) {
-                                            val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
-                                            launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
-                                        } else {
-                                            val intent = packageManager.getLaunchIntentForPackage(app.packageName)
-                                            if (intent != null) {
-                                                context.startActivity(intent)
+                // Separar apps por categorias
+                val pinnedApps = visibleApps.filter { state.pinnedApps.contains(it.packageName) }
+                val appsInUse = visibleApps.filter {
+                    !state.pinnedApps.contains(it.packageName) && it.totalTimeInForeground > 0
+                }.sortedByDescending { it.totalTimeInForeground }.take(6)
+                val otherApps = visibleApps.filter {
+                    !state.pinnedApps.contains(it.packageName) && it.totalTimeInForeground == 0L
+                }
+
+                // SEÇÃO: FAVORITOS/FIXADOS
+                if (pinnedApps.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AppSectionHeader(
+                            stringResource(id = R.string.section_favorites_title),
+                        )
+                    }
+                    items(
+                        pinnedApps,
+                        key = { "${it.packageName}_${it.userHandle}_pinned" }) { app ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AppBubble(
+                                app = app,
+                                maxTime = maxTime,
+                                highlighted = state.highlightedApps.contains(app.packageName),
+                                showName = state.showAppNames,
+                                showUsageBadges = state.showUsageBadges,
+                                ignoreDynamicSize = state.ignoreDynamicSize,
+                                iconSizeDp = state.iconSizeDp,
+                                isPinned = true,
+                                onClick = {
+                                    if (state.delayApps.contains(app.packageName)) {
+                                        delayAppToLaunch = app
+                                    } else {
+                                        try {
+                                            if (app.componentName != null && app.userHandle != null) {
+                                                val launcherApps =
+                                                    context.getSystemService(android.content.pm.LauncherApps::class.java)
+                                                launcherApps?.startMainActivity(
+                                                    app.componentName,
+                                                    app.userHandle,
+                                                    null,
+                                                    null
+                                                )
+                                            } else {
+                                                val intent =
+                                                    packageManager.getLaunchIntentForPackage(app.packageName)
+                                                if (intent != null) {
+                                                    context.startActivity(intent)
+                                                }
+                                            }
+                                        } catch (_: Throwable) {
+                                            try {
+                                                val infoIntent = Intent(
+                                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                    "package:${app.packageName}".toUri()
+                                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                                context.startActivity(infoIntent)
+                                            } catch (_: Exception) { /* ignore */
                                             }
                                         }
-                                    } catch (_: Throwable) {
-                                        try {
-                                            val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                                "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                            context.startActivity(infoIntent)
-                                        } catch (_: Exception) { /* ignore */ }
                                     }
-                                }
-                            },
-                            onLongClick = { menuApp = app }
-                        )
+                                },
+                                onLongClick = { menuApp = app }
+                            )
 
-                        if (menuApp?.packageName == app.packageName) {
-                            DropdownMenu(
-                                expanded = true,
-                                onDismissRequest = { menuApp = null }
-                            ) {
-                                val isHighlighted = state.highlightedApps.contains(app.packageName)
-                                DropdownMenuItem(
-                                    text = { Text(if (isHighlighted) stringResource(id = R.string.menu_unhighlight) else stringResource(id = R.string.menu_highlight)) },
-                                    onClick = {
-                                        onIntent(MainViewModel.MainIntent.ToggleHighlight(app.packageName))
-                                        menuApp = null
-                                    }
-                                )
+                            if (menuApp?.packageName == app.packageName) {
+                                DropdownMenu(
+                                    expanded = true,
+                                    onDismissRequest = { menuApp = null }
+                                ) {
+                                    val isHighlighted =
+                                        state.highlightedApps.contains(app.packageName)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isHighlighted) stringResource(id = R.string.menu_unhighlight) else stringResource(
+                                                    id = R.string.menu_highlight
+                                                )
+                                            )
+                                        },
+                                        onClick = {
+                                            onIntent(MainViewModel.MainIntent.ToggleHighlight(app.packageName))
+                                            menuApp = null
+                                        }
+                                    )
                                     val isPinned = state.pinnedApps.contains(app.packageName)
                                     DropdownMenuItem(
-                                        text = { Text(if (isPinned) stringResource(id = R.string.menu_unpin) else stringResource(id = R.string.menu_pin)) },
+                                        text = {
+                                            Text(
+                                                if (isPinned) stringResource(id = R.string.menu_unpin) else stringResource(
+                                                    id = R.string.menu_pin
+                                                )
+                                            )
+                                        },
                                         onClick = {
                                             onIntent(MainViewModel.MainIntent.TogglePin(app.packageName))
                                             menuApp = null
                                         }
                                     )
-                                val isDelay = state.delayApps.contains(app.packageName)
-                                DropdownMenuItem(
-                                    text = { Text(if (isDelay) stringResource(id = R.string.menu_remove_delay) else stringResource(id = R.string.menu_add_delay)) },
-                                    onClick = {
-                                        onIntent(MainViewModel.MainIntent.ToggleDelayApp(app.packageName))
-                                        menuApp = null
-                                    }
-                                )
-                                val isEssential = state.essentialApps.contains(app.packageName)
-                                DropdownMenuItem(
-                                    text = { Text(if (isEssential) stringResource(id = R.string.menu_remove_essential) else stringResource(id = R.string.menu_add_essential)) },
-                                    onClick = {
-                                        onIntent(MainViewModel.MainIntent.ToggleEssentialApp(app.packageName))
-                                        menuApp = null
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(id = R.string.menu_hide)) },
-                                    onClick = {
-                                        onIntent(MainViewModel.MainIntent.ToggleHiddenApp(app.packageName))
-                                        menuApp = null
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(id = R.string.menu_app_info)) },
-                                    onClick = {
-                                        try {
-                                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                                "package:${app.packageName}".toUri()).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) {
-                                            val intent = Intent(Intent.ACTION_VIEW,
-                                                "market://details?id=${app.packageName}".toUri()).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            context.startActivity(intent)
+                                    val isDelay = state.delayApps.contains(app.packageName)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isDelay) stringResource(id = R.string.menu_remove_delay) else stringResource(
+                                                    id = R.string.menu_add_delay
+                                                )
+                                            )
+                                        },
+                                        onClick = {
+                                            onIntent(MainViewModel.MainIntent.ToggleDelayApp(app.packageName))
+                                            menuApp = null
                                         }
-                                        menuApp = null
-                                    }
-                                )
+                                    )
+                                    val isEssential = state.essentialApps.contains(app.packageName)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isEssential) stringResource(id = R.string.menu_remove_essential) else stringResource(
+                                                    id = R.string.menu_add_essential
+                                                )
+                                            )
+                                        },
+                                        onClick = {
+                                            onIntent(MainViewModel.MainIntent.ToggleEssentialApp(app.packageName))
+                                            menuApp = null
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(id = R.string.menu_hide)) },
+                                        onClick = {
+                                            onIntent(MainViewModel.MainIntent.ToggleHiddenApp(app.packageName))
+                                            menuApp = null
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(id = R.string.menu_app_info)) },
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(
+                                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                    "package:${app.packageName}".toUri()
+                                                ).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (_: Exception) {
+                                                val intent = Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    "market://details?id=${app.packageName}".toUri()
+                                                ).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            }
+                                            menuApp = null
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
+                }
+
+                // SEÇÃO: APPS EM USO
+                if (appsInUse.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AppSectionHeader(
+                            stringResource(id = R.string.section_used_today_title),
+                        )
                     }
-            }
-        )
-    if (delayAppToLaunch != null) {
-        MindfulDelayOverlay(
-            app = delayAppToLaunch!!,
-            onCancel = { 
-                val colors = listOf(
-                    Color(0xFFFF5252), // Red
-                    Color(0xFF448AFF), // Blue
-                    Color(0xFF69F0AE), // Green
-                    Color(0xFFFFD740), // Yellow
-                    Color(0xFFE040FB), // Purple
-                    Color(0xFF18FFFF), // Cyan
-                    Color(0xFFFF4081)  // Pink
-                )
-                // Pass packageName so the event is persisted in the DB for metrics
-                bubblesViewModel.onImpulseResisted(colors.random(), delayAppToLaunch?.packageName ?: "")
-                delayAppToLaunch = null
-            },
-            onContinue = {
-                val app = delayAppToLaunch!!
-                delayAppToLaunch = null
-                // Record that the impulse was NOT resisted
-                bubblesViewModel.onImpulseGiven(app.packageName)
-                try {
-                    if (app.componentName != null && app.userHandle != null) {
-                        val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
-                        launcherApps?.startMainActivity(app.componentName, app.userHandle, null, null)
-                    } else {
-                        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
-                        if (intent != null) {
-                            context.startActivity(intent)
+                    items(appsInUse, key = { "${it.packageName}_${it.userHandle}_inuse" }) { app ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AppBubbleWithMenu(
+                                app,
+                                state,
+                                onIntent,
+                                menuApp,
+                                { menuApp = it },
+                                context,
+                                packageManager,
+                                { delayAppToLaunch = it })
                         }
                     }
-                } catch (_: Throwable) {
-                    try {
-                        val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                        context.startActivity(infoIntent)
-                    } catch (_: Exception) { /* ignore */ }
+                }
+
+                // SEÇÃO: TODOS OS APPS
+                if (otherApps.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AppSectionHeader(
+                            stringResource(id = R.string.section_all_apps_title),
+                        )
+                    }
+                    items(otherApps, key = { "${it.packageName}_${it.userHandle}_other" }) { app ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AppBubbleWithMenu(
+                                app,
+                                state,
+                                onIntent,
+                                menuApp,
+                                { menuApp = it },
+                                context,
+                                packageManager,
+                                { delayAppToLaunch = it })
+                        }
+                    }
                 }
             }
         )
+        if (delayAppToLaunch != null) {
+            MindfulDelayOverlay(
+                app = delayAppToLaunch!!,
+                onCancel = {
+                    val colors = listOf(
+                        Color(0xFFFF5252), // Red
+                        Color(0xFF448AFF), // Blue
+                        Color(0xFF69F0AE), // Green
+                        Color(0xFFFFD740), // Yellow
+                        Color(0xFFE040FB), // Purple
+                        Color(0xFF18FFFF), // Cyan
+                        Color(0xFFFF4081)  // Pink
+                    )
+                    // Pass packageName so the event is persisted in the DB for metrics
+                    bubblesViewModel.onImpulseResisted(
+                        colors.random(),
+                        delayAppToLaunch?.packageName ?: ""
+                    )
+                    delayAppToLaunch = null
+                },
+                onContinue = {
+                    val app = delayAppToLaunch!!
+                    delayAppToLaunch = null
+                    // Record that the impulse was NOT resisted
+                    bubblesViewModel.onImpulseGiven(app.packageName)
+                    try {
+                        if (app.componentName != null && app.userHandle != null) {
+                            val launcherApps =
+                                context.getSystemService(android.content.pm.LauncherApps::class.java)
+                            launcherApps?.startMainActivity(
+                                app.componentName,
+                                app.userHandle,
+                                null,
+                                null
+                            )
+                        } else {
+                            val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                            if (intent != null) {
+                                context.startActivity(intent)
+                            }
+                        }
+                    } catch (_: Throwable) {
+                        try {
+                            val infoIntent = Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                "package:${app.packageName}".toUri()
+                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            context.startActivity(infoIntent)
+                        } catch (_: Exception) { /* ignore */
+                        }
+                    }
+                }
+            )
+        }
     }
 }
-}
 
+@Composable
+fun AppSectionHeader(title: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
 
 @Composable
 fun AppBubble(
@@ -260,6 +406,7 @@ fun AppBubble(
     showUsageBadges: Boolean,
     ignoreDynamicSize: Boolean,
     iconSizeDp: Int,
+    isPinned: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -280,18 +427,21 @@ fun AppBubble(
     }
 
     // Load icon at a fixed resolution (128px) regardless of the displayed bubble size.
-    // This is the key fix: previously targetPx was a key, causing ALL icons to reload from
-    // disk every time usage stats changed (maxTime changed → targetPx changed for every app).
-    // Now the icon only reloads when the package actually changes.
     val context = LocalContext.current
-    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, app.packageName, app.userHandle) {
+    val imageBitmap by produceState<ImageBitmap?>(
+        initialValue = null,
+        app.packageName,
+        app.userHandle
+    ) {
         value = withContext(Dispatchers.IO) {
             try {
                 val pm = context.packageManager
                 val drawable = if (app.userHandle != null) {
-                    val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
+                    val launcherApps =
+                        context.getSystemService(android.content.pm.LauncherApps::class.java)
                     val activities = launcherApps?.getActivityList(app.packageName, app.userHandle)
-                    activities?.firstOrNull()?.getBadgedIcon(0) ?: pm.getApplicationIcon(app.packageName)
+                    activities?.firstOrNull()?.getBadgedIcon(0)
+                        ?: pm.getApplicationIcon(app.packageName)
                 } else {
                     pm.getApplicationIcon(app.packageName)
                 }
@@ -306,6 +456,8 @@ fun AppBubble(
         }
     }
 
+    // ...existing code...
+
     Column(
         modifier = Modifier
             .padding(8.dp)
@@ -315,7 +467,24 @@ fun AppBubble(
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(modifier = Modifier.size(resolvedSize)) {
+        Box(
+            modifier = Modifier
+                .size(resolvedSize)
+                .then(
+                    if (isPinned) {
+                        Modifier
+                            .background(
+                                androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(
+                                    alpha = 0.8f
+                                ),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .padding(4.dp)
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
             val currentImage = imageBitmap
             if (currentImage != null) {
                 Image(
@@ -327,18 +496,23 @@ fun AppBubble(
             }
             if (showUsageBadges && app.totalTimeInForeground > 0) {
                 val minutes = TimeUnit.MILLISECONDS.toMinutes(app.totalTimeInForeground)
-                if (minutes > 0) {
-                    val hours = minutes / 60
-                    val mins = minutes % 60
-                    val timeStr = if (hours > 0) "${hours}h${mins}m" else "${mins}m"
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    ) {
-                        Text(text = timeStr, fontSize = 10.sp, color = Color.White)
-                    }
+                val hours = minutes / 60
+                val mins = minutes % 60
+                val timeStr = when {
+                    minutes == 0L -> "<1m"
+                    hours > 0 -> "${hours}h${mins}m"
+                    else -> "${mins}m"
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Color.Black.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(text = timeStr, fontSize = 10.sp, color = Color.White)
                 }
             }
         }
@@ -346,9 +520,10 @@ fun AppBubble(
         if (showName && resolvedSize >= 60.dp) {
             Text(
                 text = app.appName,
-                fontSize = 12.sp,
+                fontSize = 14.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground,
                 style = androidx.compose.ui.text.TextStyle(
@@ -358,7 +533,9 @@ fun AppBubble(
                         blurRadius = 8f
                     )
                 ),
-                modifier = Modifier.padding(top = 4.dp).size(width = resolvedSize, height = 20.dp)
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .size(width = resolvedSize + 8.dp, height = 30.dp)
             )
         }
     }
@@ -395,7 +572,10 @@ fun MindfulDelayOverlay(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 Text(
-                    text = stringResource(id = R.string.dialog_delay_message).replace("este aplicativo", app.appName),
+                    text = stringResource(id = R.string.dialog_delay_message).replace(
+                        "este aplicativo",
+                        app.appName
+                    ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(bottom = 24.dp)
                 )
@@ -410,12 +590,169 @@ fun MindfulDelayOverlay(
                         enabled = timeLeft == 0
                     ) {
                         Text(
-                            text = if (timeLeft > 0) String.format(stringResource(id = R.string.dialog_delay_continue), timeLeft) 
-                                   else stringResource(id = R.string.dialog_delay_continue_ready)
+                            text = if (timeLeft > 0) String.format(
+                                stringResource(id = R.string.dialog_delay_continue),
+                                timeLeft
+                            )
+                            else stringResource(id = R.string.dialog_delay_continue_ready)
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AppBubbleWithMenu(
+    app: AppInfo,
+    state: MainViewModel.MainUiState,
+    onIntent: (MainViewModel.MainIntent) -> Unit,
+    menuApp: AppInfo?,
+    setMenuApp: (AppInfo?) -> Unit,
+    context: android.content.Context,
+    packageManager: android.content.pm.PackageManager,
+    setDelayAppToLaunch: (AppInfo) -> Unit
+) {
+    val maxTime by remember(state) {
+        derivedStateOf { state.apps.maxOfOrNull { it.totalTimeInForeground } ?: 1L }
+    }
+
+    AppBubble(
+        app = app,
+        maxTime = maxTime,
+        highlighted = state.highlightedApps.contains(app.packageName),
+        showName = state.showAppNames,
+        showUsageBadges = state.showUsageBadges,
+        ignoreDynamicSize = state.ignoreDynamicSize,
+        iconSizeDp = state.iconSizeDp,
+        isPinned = state.pinnedApps.contains(app.packageName),
+        onClick = {
+            if (state.delayApps.contains(app.packageName)) {
+                setDelayAppToLaunch(app)
+            } else {
+                try {
+                    if (app.componentName != null && app.userHandle != null) {
+                        val launcherApps =
+                            context.getSystemService(android.content.pm.LauncherApps::class.java)
+                        launcherApps?.startMainActivity(
+                            app.componentName,
+                            app.userHandle,
+                            null,
+                            null
+                        )
+                    } else {
+                        val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                        if (intent != null) {
+                            context.startActivity(intent)
+                        }
+                    }
+                } catch (_: Throwable) {
+                    try {
+                        val infoIntent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            "package:${app.packageName}".toUri()
+                        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                        context.startActivity(infoIntent)
+                    } catch (_: Exception) { /* ignore */
+                    }
+                }
+            }
+        },
+        onLongClick = { setMenuApp(app) }
+    )
+
+    if (menuApp?.packageName == app.packageName) {
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = { setMenuApp(null) }
+        ) {
+            val isHighlighted = state.highlightedApps.contains(app.packageName)
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (isHighlighted) stringResource(id = R.string.menu_unhighlight) else stringResource(
+                            id = R.string.menu_highlight
+                        )
+                    )
+                },
+                onClick = {
+                    onIntent(MainViewModel.MainIntent.ToggleHighlight(app.packageName))
+                    setMenuApp(null)
+                }
+            )
+            val isPinned = state.pinnedApps.contains(app.packageName)
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (isPinned) stringResource(id = R.string.menu_unpin) else stringResource(
+                            id = R.string.menu_pin
+                        )
+                    )
+                },
+                onClick = {
+                    onIntent(MainViewModel.MainIntent.TogglePin(app.packageName))
+                    setMenuApp(null)
+                }
+            )
+            val isDelay = state.delayApps.contains(app.packageName)
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (isDelay) stringResource(id = R.string.menu_remove_delay) else stringResource(
+                            id = R.string.menu_add_delay
+                        )
+                    )
+                },
+                onClick = {
+                    onIntent(MainViewModel.MainIntent.ToggleDelayApp(app.packageName))
+                    setMenuApp(null)
+                }
+            )
+            val isEssential = state.essentialApps.contains(app.packageName)
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (isEssential) stringResource(id = R.string.menu_remove_essential) else stringResource(
+                            id = R.string.menu_add_essential
+                        )
+                    )
+                },
+                onClick = {
+                    onIntent(MainViewModel.MainIntent.ToggleEssentialApp(app.packageName))
+                    setMenuApp(null)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(id = R.string.menu_hide)) },
+                onClick = {
+                    onIntent(MainViewModel.MainIntent.ToggleHiddenApp(app.packageName))
+                    setMenuApp(null)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(id = R.string.menu_app_info)) },
+                onClick = {
+                    try {
+                        val intent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            "package:${app.packageName}".toUri()
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            "market://details?id=${app.packageName}".toUri()
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                    setMenuApp(null)
+                }
+            )
         }
     }
 }

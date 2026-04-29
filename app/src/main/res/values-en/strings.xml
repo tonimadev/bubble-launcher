@@ -65,4 +65,9 @@
     <string name="default_launcher_prompt_message">To get the full experience, set Bubbles Launcher as your system default launcher.</string>
     <string name="default_launcher_prompt_action">Set now</string>
     <string name="default_launcher_prompt_unavailable">Could not open the default launcher screen.</string>
+    <string name="section_favorites_title">Favorites</string>
+    <string name="section_used_today_title">Used today</string>
+    <string name="section_used_today_subtitle">Apps you used today</string>
+    <string name="section_all_apps_title">All apps</string>
+    <string name="section_all_apps_subtitle">Your applications</string>
 </resources>
