@@ -3,8 +3,6 @@ package digital.tonima.bubbleslauncher.ui
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.Image
-import android.app.WallpaperManager
-import androidx.compose.ui.layout.ContentScale
 import android.annotation.SuppressLint
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +16,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -32,8 +31,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
 import digital.tonima.bubbleslauncher.R
 import androidx.compose.ui.text.style.TextAlign
@@ -51,7 +48,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @SuppressLint("MissingPermission")
@@ -60,7 +57,7 @@ fun MainScreen(
     state: MainViewModel.MainUiState,
     onIntent: (MainViewModel.MainIntent) -> Unit,
     modifier: Modifier = Modifier,
-    bubblesViewModel: BubblesViewModel = viewModel()
+    bubblesViewModel: BubblesViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
@@ -74,26 +71,36 @@ fun MainScreen(
             .padding(16.dp)
     ) {
         MentalAquariumBackground(viewModel = bubblesViewModel)
-        
-        var visibleApps = state.apps.filter { !state.hiddenApps.contains(it.packageName) }
-        if (state.isFocusModeEnabled) {
-            visibleApps = visibleApps.filter { state.essentialApps.contains(it.packageName) }
+
+        // Use Sets for O(1) contains checks — avoids O(n²) filtering on each recomposition
+        val hiddenSet by remember(state.hiddenApps) { derivedStateOf { state.hiddenApps.toHashSet() } }
+        val essentialSet by remember(state.essentialApps) { derivedStateOf { state.essentialApps.toHashSet() } }
+
+        // Hoist expensive filtering with remember so it only re-runs when inputs actually change
+        val visibleApps by remember(state.apps, hiddenSet, state.isFocusModeEnabled, essentialSet) {
+            derivedStateOf {
+                var filtered = state.apps.filter { !hiddenSet.contains(it.packageName) }
+                if (state.isFocusModeEnabled) {
+                    filtered = filtered.filter { essentialSet.contains(it.packageName) }
+                }
+                filtered
+            }
         }
-        val maxTime = visibleApps.maxOfOrNull { it.totalTimeInForeground } ?: 1L
-        val sortedApps = visibleApps
+        val maxTime by remember(visibleApps) {
+            derivedStateOf { visibleApps.maxOfOrNull { it.totalTimeInForeground } ?: 1L }
+        }
 
-        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val cellMinWidth = 96.dp
-            val columns = maxOf(1, (maxWidth / cellMinWidth).toInt())
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                content = {
-                    items(sortedApps) { app ->
+        // GridCells.Adaptive replaces BoxWithConstraints + Fixed(columns) — same result, less overhead
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(96.dp),
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            content = {
+                // key = packageName + userHandle ensures uniqueness even when the same package
+                // exists in both personal and work profiles (same packageName, different userHandle)
+                items(visibleApps, key = { "${it.packageName}_${it.userHandle}" }) { app ->
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AppBubble(
                             app = app,
@@ -117,7 +124,7 @@ fun MainScreen(
                                                 context.startActivity(intent)
                                             }
                                         }
-                                    } catch (t: Throwable) {
+                                    } catch (_: Throwable) {
                                         try {
                                             val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                                 "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
@@ -196,9 +203,8 @@ fun MainScreen(
                         }
                     }
                     }
-                }
-            )
-        }
+            }
+        )
     if (delayAppToLaunch != null) {
         MindfulDelayOverlay(
             app = delayAppToLaunch!!,
@@ -212,12 +218,15 @@ fun MainScreen(
                     Color(0xFF18FFFF), // Cyan
                     Color(0xFFFF4081)  // Pink
                 )
-                bubblesViewModel.onImpulseResisted(colors.random())
-                delayAppToLaunch = null 
+                // Pass packageName so the event is persisted in the DB for metrics
+                bubblesViewModel.onImpulseResisted(colors.random(), delayAppToLaunch?.packageName ?: "")
+                delayAppToLaunch = null
             },
             onContinue = {
                 val app = delayAppToLaunch!!
                 delayAppToLaunch = null
+                // Record that the impulse was NOT resisted
+                bubblesViewModel.onImpulseGiven(app.packageName)
                 try {
                     if (app.componentName != null && app.userHandle != null) {
                         val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java)
@@ -228,7 +237,7 @@ fun MainScreen(
                             context.startActivity(intent)
                         }
                     }
-                } catch (t: Throwable) {
+                } catch (_: Throwable) {
                     try {
                         val infoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                             "package:${app.packageName}".toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
@@ -270,10 +279,12 @@ fun AppBubble(
         ColorMatrix().apply { setToSaturation(0f) }
     }
 
-    val density = LocalDensity.current
-    val targetPx = with(density) { resolvedSize.roundToPx() }
+    // Load icon at a fixed resolution (128px) regardless of the displayed bubble size.
+    // This is the key fix: previously targetPx was a key, causing ALL icons to reload from
+    // disk every time usage stats changed (maxTime changed → targetPx changed for every app).
+    // Now the icon only reloads when the package actually changes.
     val context = LocalContext.current
-    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, app.packageName, targetPx) {
+    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, app.packageName, app.userHandle) {
         value = withContext(Dispatchers.IO) {
             try {
                 val pm = context.packageManager
@@ -284,13 +295,12 @@ fun AppBubble(
                 } else {
                     pm.getApplicationIcon(app.packageName)
                 }
-                
                 try {
-                    drawable.toBitmap(width = targetPx.coerceAtLeast(1), height = targetPx.coerceAtLeast(1)).asImageBitmap()
-                } catch (t: Throwable) {
+                    drawable.toBitmap(width = 128, height = 128).asImageBitmap()
+                } catch (_: Throwable) {
                     drawable.toBitmap().asImageBitmap()
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }

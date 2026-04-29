@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 interface ImpulseDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertEvent(event: ImpulseEvent)
+    suspend fun insertEvent(event: ImpulseEvent): Long
 
     @Query("SELECT * FROM impulse_events WHERE timestamp >= :startTimestamp AND timestamp <= :endTimestamp ORDER BY timestamp DESC")
     fun getEventsByDateRange(startTimestamp: Long, endTimestamp: Long): Flow<List<ImpulseEvent>>

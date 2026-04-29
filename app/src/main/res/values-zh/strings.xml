@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">每日胜率</string>
     <string name="metrics_lifetime_bubbles">泡泡总数</string>
     <string name="metrics_time_saved_month">本月节省时间</string>
+    <string name="default_launcher_prompt_title">设置默认启动器</string>
+    <string name="default_launcher_prompt_message">为了获得完整体验，请将 Bubbles Launcher 设为系统默认启动器。</string>
+    <string name="default_launcher_prompt_action">立即设置</string>
+    <string name="default_launcher_prompt_unavailable">无法打开默认启动器设置页面。</string>
 </resources>

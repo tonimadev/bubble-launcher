@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">Taux de Victoire Quotidien</string>
     <string name="metrics_lifetime_bubbles">Total de Bulles</string>
     <string name="metrics_time_saved_month">Temps Économisé Ce Mois</string>
+    <string name="default_launcher_prompt_title">Définir le lanceur par défaut</string>
+    <string name="default_launcher_prompt_message">Pour profiter de l'expérience complète, définissez Bubbles Launcher comme lanceur par défaut du système.</string>
+    <string name="default_launcher_prompt_action">Définir maintenant</string>
+    <string name="default_launcher_prompt_unavailable">Impossible d'ouvrir l'écran du lanceur par défaut.</string>
 </resources>

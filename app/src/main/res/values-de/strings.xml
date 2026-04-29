@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">Tägliche Gewinnrate</string>
     <string name="metrics_lifetime_bubbles">Blasen insgesamt</string>
     <string name="metrics_time_saved_month">Gesparte Zeit diesen Monat</string>
+    <string name="default_launcher_prompt_title">Standard-Launcher festlegen</string>
+    <string name="default_launcher_prompt_message">Fr die volle Erfahrung lege Bubbles Launcher als Standard-Launcher des Systems fest.</string>
+    <string name="default_launcher_prompt_action">Jetzt festlegen</string>
+    <string name="default_launcher_prompt_unavailable">Der Bildschirm fr Standard-Launcher konnte nicht geffnet werden.</string>
 </resources>

@@ -1,17 +1,17 @@
 package digital.tonima.bubbleslauncher
 
-import android.Manifest
 import android.app.AppOpsManager
+import android.app.role.RoleManager
 import android.content.Intent
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,8 +46,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
 import kotlin.math.roundToInt
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import digital.tonima.bubbleslauncher.data.Profile
 import digital.tonima.bubbleslauncher.ui.MainScreen
@@ -87,13 +85,17 @@ class MainActivity : ComponentActivity() {
                     return@BubblesLauncherTheme
                 }
 
+                val (showDefaultLauncherPrompt, setShowDefaultLauncherPrompt) = remember { mutableStateOf(false) }
+                val (dismissedDefaultLauncherPromptThisSession, setDismissedDefaultLauncherPromptThisSession) = remember { mutableStateOf(false) }
+
                 val (showUsageRationale, setShowUsageRationale) = remember { mutableStateOf(false) }
+                @Suppress("DEPRECATION")
                 fun hasUsageAccess(ctx: Context): Boolean {
                     return try {
                         val appOps = ctx.getSystemService(AppOpsManager::class.java)
                         val mode = appOps.noteOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
-                        mode == AppOpsManager.MODE_ALLOWED || mode == 0
-                    } catch (t: Throwable) {
+                        mode == AppOpsManager.MODE_ALLOWED
+                    } catch (_: Throwable) {
                         false
                     }
                 }
@@ -103,11 +105,19 @@ class MainActivity : ComponentActivity() {
                     setHasUsage(hasUsageAccess(this@MainActivity))
                 }
 
-                LaunchedEffect(state.ignoreDynamicSize, state.apps, state.hasSeenOnboarding) {
-                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity) && state.hasSeenOnboarding) {
+                LaunchedEffect(state.ignoreDynamicSize, state.apps) {
+                    if (!state.ignoreDynamicSize && !hasUsageAccess(this@MainActivity)) {
                         setShowUsageRationale(true)
                     } else {
                         setShowUsageRationale(false)
+                    }
+                }
+
+                LaunchedEffect(state.apps, dismissedDefaultLauncherPromptThisSession) {
+                    if (dismissedDefaultLauncherPromptThisSession) {
+                        setShowDefaultLauncherPrompt(false)
+                    } else {
+                        setShowDefaultLauncherPrompt(!isDefaultLauncher())
                     }
                 }
 
@@ -129,7 +139,7 @@ class MainActivity : ComponentActivity() {
                             TopAppBar(
                                 title = { Text(stringResource(id = R.string.app_name)) },
                                 actions = {
-                                    androidx.compose.material3.TextButton(
+                                    TextButton(
                                         onClick = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleFocusMode) }
                                     ) {
                                         Text(
@@ -153,16 +163,38 @@ class MainActivity : ComponentActivity() {
                                     selectedTabIndex = if (selectedProfile == Profile.PERSONAL) 0 else 1,
                                     containerColor = if (state.useSystemWallpaper) androidx.compose.ui.graphics.Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.surface
                                 ) {
-                                    Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
+                                    Tab(selected = selectedProfile == Profile.PERSONAL, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.PERSONAL)) }) {
                                         Text(stringResource(id = R.string.tab_personal))
                                     }
-                                    Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(digital.tonima.bubbleslauncher.ui.MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
+                                    Tab(selected = selectedProfile == Profile.WORK, onClick = { viewModel.submitIntent(MainViewModel.MainIntent.SelectProfile(Profile.WORK)) }) {
                                         Text(stringResource(id = R.string.tab_work))
                                     }
                                 }
                             }
                         }
                     }, snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
+                            if (showDefaultLauncherPrompt) {
+                                AlertDialog(
+                                    onDismissRequest = {
+                                        setShowDefaultLauncherPrompt(false)
+                                        setDismissedDefaultLauncherPromptThisSession(true)
+                                    },
+                                    title = { Text(stringResource(id = R.string.default_launcher_prompt_title)) },
+                                    text = { Text(stringResource(id = R.string.default_launcher_prompt_message)) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            setShowDefaultLauncherPrompt(false)
+                                            requestSetAsDefaultLauncher()
+                                        }) { Text(stringResource(id = R.string.default_launcher_prompt_action)) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = {
+                                            setShowDefaultLauncherPrompt(false)
+                                            setDismissedDefaultLauncherPromptThisSession(true)
+                                        }) { Text(stringResource(id = R.string.permission_rationale_cancel)) }
+                                    }
+                                )
+                            }
                             if (showUsageRationale) {
                                 AlertDialog(
                                     onDismissRequest = { setShowUsageRationale(false) },
@@ -276,6 +308,71 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.submitIntent(MainViewModel.MainIntent.LoadApps)
     }
+
+    private fun isDefaultLauncher(): Boolean {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolveInfo = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        val defaultHomePackage = resolveInfo?.activityInfo?.packageName
+        return defaultHomePackage == packageName
+    }
+
+    private fun requestSetAsDefaultLauncher() {
+        fun launchIfAvailable(intent: Intent): Boolean {
+            return if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+                true
+            } else {
+                false
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                    val roleIntent = roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)
+                    if (launchIfAvailable(roleIntent)) {
+                        return
+                    }
+                }
+            } catch (_: Exception) {
+                // Fallbacks below
+            }
+        }
+
+        try {
+            if (launchIfAvailable(Intent(Settings.ACTION_HOME_SETTINGS))) {
+                return
+            }
+        } catch (_: Exception) {
+            // Fallback below
+        }
+
+        try {
+            if (launchIfAvailable(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))) {
+                return
+            }
+        } catch (_: Exception) {
+            // Fallback below
+        }
+
+        // Last fallback: open HOME intent to at least trigger chooser on some OEM ROMs.
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+            }
+            if (launchIfAvailable(homeIntent)) {
+                return
+            }
+        } catch (_: Exception) {
+            // Nothing else we can do
+        }
+
+        Toast.makeText(this, getString(R.string.default_launcher_prompt_unavailable), Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable
@@ -382,7 +479,7 @@ fun SettingsScreen(
                 items(hiddenAppsList) { app ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(text = app.appName)
-                        androidx.compose.material3.TextButton(onClick = { onUnhideApp(app.packageName) }) {
+                        TextButton(onClick = { onUnhideApp(app.packageName) }) {
                             Text(stringResource(id = R.string.menu_unhide))
                         }
                     }

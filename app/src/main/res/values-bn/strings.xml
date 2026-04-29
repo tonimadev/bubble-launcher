@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">দৈনিক জয়ের হার</string>
     <string name="metrics_lifetime_bubbles">মোট বুদবুদ</string>
     <string name="metrics_time_saved_month">এই মাসে সাশ্রয় করা সময়</string>
+    <string name="default_launcher_prompt_title">ডিফল্ট লঞ্চার সেট করুন</string>
+    <string name="default_launcher_prompt_message">সম্পূর্ণ অভিজ্ঞতা পেতে, Bubbles Launcher-কে সিস্টেমের ডিফল্ট লঞ্চার হিসেবে সেট করুন।</string>
+    <string name="default_launcher_prompt_action">এখনই সেট করুন</string>
+    <string name="default_launcher_prompt_unavailable">ডিফল্ট লঞ্চার স্ক্রিন খোলা যায়নি।</string>
 </resources>

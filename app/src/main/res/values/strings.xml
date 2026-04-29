@@ -60,4 +60,8 @@
     <string name="metrics_daily_win_rate">Taxa de Vitória Diária</string>
     <string name="metrics_lifetime_bubbles">Bolhas Totais</string>
     <string name="metrics_time_saved_month">Tempo Economizado Este Mês</string>
+    <string name="default_launcher_prompt_title">Definir launcher padrão</string>
+    <string name="default_launcher_prompt_message">Para usar toda a experiência, defina o Bubbles Launcher como launcher padrão do sistema.</string>
+    <string name="default_launcher_prompt_action">Definir agora</string>
+    <string name="default_launcher_prompt_unavailable">Não foi possível abrir a tela de launcher padrão.</string>
 </resources>

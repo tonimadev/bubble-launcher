@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">Daily Win Rate</string>
     <string name="metrics_lifetime_bubbles">Lifetime Bubbles</string>
     <string name="metrics_time_saved_month">Time Saved This Month</string>
+    <string name="default_launcher_prompt_title">Set default launcher</string>
+    <string name="default_launcher_prompt_message">To get the full experience, set Bubbles Launcher as your system default launcher.</string>
+    <string name="default_launcher_prompt_action">Set now</string>
+    <string name="default_launcher_prompt_unavailable">Could not open the default launcher screen.</string>
 </resources>

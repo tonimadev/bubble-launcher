@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">Tasa de Victoria Diaria</string>
     <string name="metrics_lifetime_bubbles">Burbujas Totales</string>
     <string name="metrics_time_saved_month">Tiempo Ahorrado Este Mes</string>
+    <string name="default_launcher_prompt_title">Establecer launcher predeterminado</string>
+    <string name="default_launcher_prompt_message">Para obtener la experiencia completa, configura Bubbles Launcher como launcher predeterminado del sistema.</string>
+    <string name="default_launcher_prompt_action">Configurar ahora</string>
+    <string name="default_launcher_prompt_unavailable">No se pudo abrir la pantalla de launcher predeterminado.</string>
 </resources>

@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">दैनिक जीत दर</string>
     <string name="metrics_lifetime_bubbles">कुल बुलबुले</string>
     <string name="metrics_time_saved_month">इस महीने बचाया गया समय</string>
+    <string name="default_launcher_prompt_title">डिफ़ॉल्ट लॉन्चर सेट करें</string>
+    <string name="default_launcher_prompt_message">पूरा अनुभव पाने के लिए, Bubbles Launcher को सिस्टम का डिफ़ॉल्ट लॉन्चर सेट करें।</string>
+    <string name="default_launcher_prompt_action">अभी सेट करें</string>
+    <string name="default_launcher_prompt_unavailable">डिफ़ॉल्ट लॉन्चर स्क्रीन नहीं खोली जा सकी।</string>
 </resources>

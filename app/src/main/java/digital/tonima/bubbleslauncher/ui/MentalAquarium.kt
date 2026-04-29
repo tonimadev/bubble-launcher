@@ -14,12 +14,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.tonima.bubbleslauncher.data.dao.ImpulseDao
+import digital.tonima.bubbleslauncher.data.model.ImpulseEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.UUID
+import javax.inject.Inject
 import kotlin.random.Random
 
 // 1. Data Class
@@ -34,7 +40,10 @@ data class Bubble(
 )
 
 // 2. ViewModel for State Management
-class BubblesViewModel : ViewModel() {
+@HiltViewModel
+class BubblesViewModel @Inject constructor(
+    private val impulseDao: ImpulseDao
+) : ViewModel() {
     private val _bubbles = MutableStateFlow<List<Bubble>>(emptyList())
     val bubbles: StateFlow<List<Bubble>> = _bubbles.asStateFlow()
 
@@ -42,7 +51,20 @@ class BubblesViewModel : ViewModel() {
     private var screenWidth = 1000f
     private var screenHeight = 2000f
 
-    fun onImpulseResisted(appColor: Color) {
+    fun onImpulseResisted(appColor: Color, packageName: String = "") {
+        // If packageName is provided (real usage, not onboarding demo), persist to DB
+        if (packageName.isNotBlank()) {
+            viewModelScope.launch {
+                impulseDao.insertEvent(
+                    ImpulseEvent(
+                        timestamp = System.currentTimeMillis(),
+                        packageName = packageName,
+                        wasResisted = true
+                    )
+                )
+            }
+        }
+
         val radius = Random.nextFloat() * 40f + 40f // Random radius between 40 and 80
 
         // Start near the bottom, horizontally distributed
@@ -68,6 +90,19 @@ class BubblesViewModel : ViewModel() {
 
         // Add the new bubble to the flow
         _bubbles.update { it + newBubble }
+    }
+
+    /** Called when the user did NOT resist the impulse (clicked Continue on MindfulDelay). */
+    fun onImpulseGiven(packageName: String) {
+        viewModelScope.launch {
+            impulseDao.insertEvent(
+                ImpulseEvent(
+                    timestamp = System.currentTimeMillis(),
+                    packageName = packageName,
+                    wasResisted = false
+                )
+            )
+        }
     }
 
     // Called on every frame to step the physics engine forward
@@ -143,9 +178,9 @@ fun MentalAquariumBackground(
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        // Read the tick to observe the state and force this block to re-execute every frame
-        val currentTick = tick
-        
+        // Read tick so Canvas observes state and redraws every frame
+        tick
+
         // Update physics boundaries based on actual canvas dimensions
         viewModel.updateScreenDimensions(size.width, size.height)
 

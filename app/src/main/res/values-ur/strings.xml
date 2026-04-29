@@ -61,4 +61,8 @@
     <string name="metrics_daily_win_rate">روزانہ جیت کی شرح</string>
     <string name="metrics_lifetime_bubbles">کل بلبلے</string>
     <string name="metrics_time_saved_month">اس مہینے بچایا گیا وقت</string>
+    <string name="default_launcher_prompt_title">ڈیفالٹ لانچر سیٹ کریں</string>
+    <string name="default_launcher_prompt_message">مکمل تجربے کے لیے، Bubbles Launcher کو سسٹم کا ڈیفالٹ لانچر بنائیں۔</string>
+    <string name="default_launcher_prompt_action">ابھی سیٹ کریں</string>
+    <string name="default_launcher_prompt_unavailable">ڈیفالٹ لانچر اسکرین نہیں کھولی جا سکی۔</string>
 </resources>

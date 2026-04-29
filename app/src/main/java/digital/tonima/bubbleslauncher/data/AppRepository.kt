@@ -39,12 +39,15 @@ class AppRepository @Inject constructor(
                 val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
                 val apps = packageManager.queryIntentActivities(intent, 0)
                 apps.map { resolveInfo ->
-                    val packageName = resolveInfo.activityInfo.packageName
-                    val appName = resolveInfo.loadLabel(packageManager).toString()
-                    val timeInForeground = usageStats[packageName] ?: 0L
-                    val component = ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name)
-                    AppInfo(packageName, appName, timeInForeground, component, null)
-                }
+                        val packageName = resolveInfo.activityInfo.packageName
+                        val appName = resolveInfo.loadLabel(packageManager).toString()
+                        val timeInForeground = usageStats[packageName] ?: 0L
+                        val component = ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name)
+                        AppInfo(packageName, appName, timeInForeground, component, null)
+                    }
+                    // An app can register multiple CATEGORY_LAUNCHER activities (e.g. Motorola apps).
+                    // Keep only the first entry per packageName to avoid duplicate keys in the UI.
+                    .distinctBy { it.packageName }
             }
             Profile.WORK -> {
                 try {
@@ -67,6 +70,8 @@ class AppRepository @Inject constructor(
                         }
                     }
                     result
+                        // Same deduplication for work profile: multiple launcher activities per package
+                        .distinctBy { "${it.packageName}_${it.userHandle}" }
                 } catch (e: Exception) {
                     Log.w("AppRepository", "Failed to load work profile apps", e)
                     emptyList()
