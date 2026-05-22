@@ -70,4 +70,33 @@
     <string name="section_used_today_subtitle">Apps you used today</string>
     <string name="section_all_apps_title">All apps</string>
     <string name="section_all_apps_subtitle">Your applications</string>
+
+    <!-- Uninstall -->
+    <string name="menu_uninstall">Uninstall</string>
+    <string name="confirm_uninstall_system_app">System apps cannot be uninstalled</string>
+
+    <!-- Wallpaper Picker -->
+    <string name="label_change_wallpaper">Change wallpaper</string>
+    <string name="label_change_wallpaper_desc">Open system wallpaper picker</string>
+
+    <!-- Notification Badges -->
+    <string name="label_show_notification_badges">Show notification badges</string>
+    <string name="label_show_notification_badges_desc">Indicators on apps with notifications</string>
+    <string name="notification_access_title">Notification access required</string>
+    <string name="notification_access_message">To show notification badges, please grant notification access in system settings.</string>
+    <string name="notification_access_button">Open Settings</string>
+
+    <!-- Widgets -->
+    <string name="widget_add">Add widget</string>
+    <string name="widget_remove">Remove widget</string>
+    <string name="section_widgets_title">Widgets</string>
+    <string name="widget_no_widgets">Tap to add widgets</string>
+
+    <!-- Search -->
+    <string name="search_hint">Search apps…</string>
+
+    <!-- Drag and Drop -->
+    <string name="drag_uninstall">Uninstall</string>
+    <string name="drag_app_info">App Info</string>
+    <string name="drag_hide">Hide</string>
 </resources>

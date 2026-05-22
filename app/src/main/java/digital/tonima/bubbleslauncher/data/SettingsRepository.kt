@@ -34,6 +34,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val HIDDEN_APPS = stringPreferencesKey("hidden_apps_list")
         private val FOCUS_MODE_ENABLED = booleanPreferencesKey("focus_mode_enabled")
         private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
+        private val SHOW_NOTIFICATION_BADGES = booleanPreferencesKey("show_notification_badges")
     }
 
     private val dataStore = context.dataStore
@@ -102,6 +103,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     val hasSeenOnboardingFlow: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[HAS_SEEN_ONBOARDING] ?: false
+    }
+
+    val showNotificationBadgesFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SHOW_NOTIFICATION_BADGES] ?: true
     }
 
     suspend fun setShowAppNames(value: Boolean) {
@@ -191,6 +196,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     suspend fun setHasSeenOnboarding(value: Boolean) {
         dataStore.edit { prefs -> prefs[HAS_SEEN_ONBOARDING] = value }
+    }
+
+    suspend fun setShowNotificationBadges(value: Boolean) {
+        dataStore.edit { prefs -> prefs[SHOW_NOTIFICATION_BADGES] = value }
     }
 }
 

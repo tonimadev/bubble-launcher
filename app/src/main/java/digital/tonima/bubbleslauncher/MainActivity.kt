@@ -69,12 +69,34 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.net.toUri
+import digital.tonima.bubbleslauncher.data.WidgetRepository
+import digital.tonima.bubbleslauncher.widget.WidgetHostManager
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     private val viewModel: MainViewModel by viewModels()
+
+    @Inject
+    lateinit var widgetHostManager: WidgetHostManager
+
+    @Inject
+    lateinit var widgetRepository: WidgetRepository
+
+    // Used by Compose to re-trigger default-launcher check when the Activity resumes
+    private val _resumeCounter = androidx.compose.runtime.mutableIntStateOf(0)
+
+    // ActivityResultLauncher for RoleManager (Android Q+)
+    private val roleResultLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        // After the user picks (or cancels), bump the resume counter so
+        // the LaunchedEffect re-evaluates isDefaultLauncher()
+        _resumeCounter.intValue++
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,7 +147,9 @@ class MainActivity : ComponentActivity() {
                     setShowUsageRationale(needsUsageAccess && !usageGranted)
                 }
 
-                LaunchedEffect(state.apps, dismissedDefaultLauncherPromptThisSession) {
+                val resumeCount by _resumeCounter
+
+                LaunchedEffect(resumeCount, dismissedDefaultLauncherPromptThisSession) {
                     if (dismissedDefaultLauncherPromptThisSession) {
                         setShowDefaultLauncherPrompt(false)
                     } else {
@@ -249,6 +273,8 @@ class MainActivity : ComponentActivity() {
                                     hiddenAppPackages = state.hiddenApps,
                                     onToggleShowNames = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowAppNames) },
                                     onToggleShowUsageBadges = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowUsageBadges) },
+                                    showNotificationBadges = state.showNotificationBadges,
+                                    onToggleShowNotificationBadges = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleShowNotificationBadges) },
                                     onToggleIgnoreDynamicSize = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleIgnoreDynamicSize) },
                                     onToggleUseSystemWallpaper = { viewModel.submitIntent(MainViewModel.MainIntent.ToggleUseSystemWallpaper) },
                                     onSetIconSize = { dp -> viewModel.submitIntent(MainViewModel.MainIntent.SetIconSize(dp)) },
@@ -301,7 +327,9 @@ class MainActivity : ComponentActivity() {
                                     MainScreen(
                                         state = state,
                                         onIntent = { intent -> viewModel.submitIntent(intent) },
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(1f),
+                                        widgetHostManager = widgetHostManager,
+                                        widgetRepository = widgetRepository
                                     )
                                 }
                             }
@@ -331,9 +359,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        widgetHostManager.startListening()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        widgetHostManager.stopListening()
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.submitIntent(MainViewModel.MainIntent.LoadApps)
+        // Bump counter so the Compose LaunchedEffect re-checks isDefaultLauncher()
+        _resumeCounter.intValue++
     }
 
     private fun isDefaultLauncher(): Boolean {
@@ -346,57 +386,41 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestSetAsDefaultLauncher() {
-        fun launchIfAvailable(intent: Intent): Boolean {
-            return if (intent.resolveActivity(packageManager) != null) {
-                startActivity(intent)
-                true
-            } else {
-                false
-            }
-        }
-
+        // Android Q+ : use RoleManager with startActivityForResult
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val roleManager = getSystemService(RoleManager::class.java)
                 if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
                     val roleIntent = roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)
-                    if (launchIfAvailable(roleIntent)) {
-                        return
-                    }
+                    roleResultLauncher.launch(roleIntent)
+                    return
                 }
             } catch (_: Exception) {
                 // Fallbacks below
             }
         }
 
+        // Try ACTION_HOME_SETTINGS
         try {
-            if (launchIfAvailable(Intent(Settings.ACTION_HOME_SETTINGS))) {
-                return
-            }
-        } catch (_: Exception) {
-            // Fallback below
-        }
+            startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+            return
+        } catch (_: Exception) { /* Fallback below */ }
 
+        // Try ACTION_MANAGE_DEFAULT_APPS_SETTINGS
         try {
-            if (launchIfAvailable(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))) {
-                return
-            }
-        } catch (_: Exception) {
-            // Fallback below
-        }
+            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+            return
+        } catch (_: Exception) { /* Fallback below */ }
 
-        // Last fallback: open HOME intent to at least trigger chooser on some OEM ROMs.
+        // Last fallback: trigger the HOME chooser
         try {
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
                 addCategory(Intent.CATEGORY_DEFAULT)
             }
-            if (launchIfAvailable(homeIntent)) {
-                return
-            }
-        } catch (_: Exception) {
-            // Nothing else we can do
-        }
+            startActivity(homeIntent)
+            return
+        } catch (_: Exception) { /* Nothing else we can do */ }
 
         Toast.makeText(this, getString(R.string.default_launcher_prompt_unavailable), Toast.LENGTH_SHORT).show()
     }
@@ -415,6 +439,8 @@ fun SettingsScreen(
     hiddenAppPackages: List<String> = emptyList(),
     onToggleShowNames: () -> Unit,
     onToggleShowUsageBadges: () -> Unit = {},
+    showNotificationBadges: Boolean = true,
+    onToggleShowNotificationBadges: () -> Unit = {},
     onToggleIgnoreDynamicSize: () -> Unit = {},
     onToggleUseSystemWallpaper: () -> Unit = {},
     onSetIconSize: (Int) -> Unit = {},
@@ -463,6 +489,14 @@ fun SettingsScreen(
                         description = "Mostrar tempo de uso",
                         checked = showUsageBadges,
                         onCheckedChange = { onToggleShowUsageBadges() }
+                    )
+
+                    // Notification Badges Toggle
+                    SettingsToggleItem(
+                        label = stringResource(id = R.string.label_show_notification_badges),
+                        description = stringResource(id = R.string.label_show_notification_badges_desc),
+                        checked = showNotificationBadges,
+                        onCheckedChange = { onToggleShowNotificationBadges() }
                     )
 
                     // System Wallpaper Toggle
@@ -538,6 +572,35 @@ fun SettingsScreen(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                 ) {
                     Text(text = stringResource(id = R.string.metrics_title))
+                }
+            }
+        )
+
+        // WALLPAPER PICKER SECTION
+        SettingsSectionCard(
+            title = stringResource(id = R.string.label_change_wallpaper),
+            content = {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.label_change_wallpaper_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_SET_WALLPAPER)
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Unable to open wallpaper picker", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(text = stringResource(id = R.string.label_change_wallpaper))
+                    }
                 }
             }
         )

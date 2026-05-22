@@ -74,4 +74,34 @@
      <string name="section_used_today_title">Usados hoje</string>
      <string name="section_used_today_subtitle">Apps que voce usou hoje</string>
      <string name="section_all_apps_title">Todos os apps</string>
+     <string name="section_all_apps_subtitle">Seus aplicativos</string>
+
+     <!-- Uninstall -->
+     <string name="menu_uninstall">Desinstalar</string>
+     <string name="confirm_uninstall_system_app">Apps do sistema não podem ser desinstalados</string>
+
+     <!-- Wallpaper Picker -->
+     <string name="label_change_wallpaper">Alterar papel de parede</string>
+     <string name="label_change_wallpaper_desc">Abrir seletor de papel de parede do sistema</string>
+
+     <!-- Notification Badges -->
+     <string name="label_show_notification_badges">Mostrar badges de notificação</string>
+     <string name="label_show_notification_badges_desc">Indicadores em apps com notificações</string>
+     <string name="notification_access_title">Acesso a notificações necessário</string>
+     <string name="notification_access_message">Para mostrar badges de notificação, permita o acesso nas configurações do sistema.</string>
+     <string name="notification_access_button">Abrir configurações</string>
+
+     <!-- Widgets -->
+     <string name="widget_add">Adicionar widget</string>
+     <string name="widget_remove">Remover widget</string>
+     <string name="section_widgets_title">Widgets</string>
+     <string name="widget_no_widgets">Toque para adicionar widgets</string>
+
+     <!-- Search -->
+     <string name="search_hint">Buscar apps…</string>
+
+     <!-- Drag and Drop -->
+     <string name="drag_uninstall">Desinstalar</string>
+     <string name="drag_app_info">Informações</string>
+     <string name="drag_hide">Esconder</string>
  </resources>

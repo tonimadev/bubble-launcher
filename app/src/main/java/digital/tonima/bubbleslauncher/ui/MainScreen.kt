@@ -1,7 +1,10 @@
 package digital.tonima.bubbleslauncher.ui
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import android.annotation.SuppressLint
 import androidx.compose.foundation.combinedClickable
@@ -9,6 +12,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -22,9 +27,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,9 +55,19 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.scale
+import digital.tonima.bubbleslauncher.data.WidgetRepository
+import digital.tonima.bubbleslauncher.ui.search.AppSearchBar
+import digital.tonima.bubbleslauncher.ui.widget.rememberWidgetPickerLauncher
+import digital.tonima.bubbleslauncher.ui.widget.widgetSectionItems
+import digital.tonima.bubbleslauncher.widget.WidgetHostManager
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @SuppressLint("MissingPermission")
@@ -59,7 +76,9 @@ fun MainScreen(
     state: MainViewModel.MainUiState,
     onIntent: (MainViewModel.MainIntent) -> Unit,
     modifier: Modifier = Modifier,
-    bubblesViewModel: BubblesViewModel = hiltViewModel()
+    bubblesViewModel: BubblesViewModel = hiltViewModel(),
+    widgetHostManager: WidgetHostManager? = null,
+    widgetRepository: WidgetRepository? = null
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
@@ -79,11 +98,16 @@ fun MainScreen(
         val essentialSet by remember(state.essentialApps) { derivedStateOf { state.essentialApps.toHashSet() } }
 
         // Hoist expensive filtering with remember so it only re-runs when inputs actually change
-        val visibleApps by remember(state.apps, hiddenSet, state.isFocusModeEnabled, essentialSet) {
+        val visibleApps by remember(state.apps, hiddenSet, state.isFocusModeEnabled, essentialSet, state.searchQuery) {
             derivedStateOf {
                 var filtered = state.apps.filter { !hiddenSet.contains(it.packageName) }
                 if (state.isFocusModeEnabled) {
                     filtered = filtered.filter { essentialSet.contains(it.packageName) }
+                }
+                // Apply search filter
+                if (state.searchQuery.isNotBlank()) {
+                    val query = state.searchQuery.lowercase()
+                    filtered = filtered.filter { it.appName.lowercase().contains(query) }
                 }
                 filtered
             }
@@ -91,6 +115,23 @@ fun MainScreen(
         val maxTime by remember(visibleApps) {
             derivedStateOf { visibleApps.maxOfOrNull { it.totalTimeInForeground } ?: 1L }
         }
+
+        // Widget picker launcher setup
+        val scope = rememberCoroutineScope()
+        val widgetPickerLauncher = if (widgetHostManager != null && widgetRepository != null) {
+            rememberWidgetPickerLauncher(widgetHostManager, widgetRepository)
+        } else null
+
+        val widgets by widgetRepository?.widgets?.collectAsState(initial = emptyList())
+            ?: remember { mutableStateOf(emptyList()) }
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Search bar
+            AppSearchBar(
+                query = state.searchQuery,
+                onQueryChange = { onIntent(MainViewModel.MainIntent.SetSearchQuery(it)) },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
 
         // GridCells.Adaptive replaces BoxWithConstraints + Fixed(columns) — same result, less overhead
         LazyVerticalGrid(
@@ -103,6 +144,20 @@ fun MainScreen(
                 vertical = 8.dp
             ),
             content = {
+                // SEÇÃO: WIDGETS
+                if (widgetHostManager != null && widgetRepository != null) {
+                    widgetSectionItems(
+                        widgets = widgets,
+                        widgetHostManager = widgetHostManager,
+                        onRemoveWidget = { appWidgetId ->
+                            scope.launch {
+                                widgetRepository.removeWidget(appWidgetId)
+                            }
+                        },
+                        onAddWidgetClick = { widgetPickerLauncher?.invoke() }
+                    )
+                }
+
                 // Separar apps por categorias
                 val pinnedApps = visibleApps.filter { state.pinnedApps.contains(it.packageName) }
                 val appsInUse = visibleApps.filter {
@@ -135,6 +190,8 @@ fun MainScreen(
                                 ignoreDynamicSize = state.ignoreDynamicSize,
                                 iconSizeDp = state.iconSizeDp,
                                 isPinned = true,
+                                notificationCount = state.notificationCounts[app.packageName] ?: 0,
+                                showNotificationBadges = state.showNotificationBadges,
                                 onClick = {
                                     if (state.delayApps.contains(app.packageName)) {
                                         delayAppToLaunch = app
@@ -263,6 +320,27 @@ fun MainScreen(
                                             menuApp = null
                                         }
                                     )
+                                    // Uninstall option
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(id = R.string.menu_uninstall)) },
+                                        onClick = {
+                                            menuApp = null
+                                            try {
+                                                val appInfo = context.packageManager.getApplicationInfo(app.packageName, 0)
+                                                if (appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) {
+                                                    Toast.makeText(context, context.getString(R.string.confirm_uninstall_system_app), Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    val uninstallIntent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+                                                    uninstallIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    context.startActivity(uninstallIntent)
+                                                }
+                                            } catch (_: Exception) {
+                                                val uninstallIntent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+                                                uninstallIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                context.startActivity(uninstallIntent)
+                                            }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -320,6 +398,7 @@ fun MainScreen(
                 }
             }
         )
+        } // end Column
         if (delayAppToLaunch != null) {
             MindfulDelayOverlay(
                 app = delayAppToLaunch!!,
@@ -407,6 +486,8 @@ fun AppBubble(
     ignoreDynamicSize: Boolean,
     iconSizeDp: Int,
     isPinned: Boolean = false,
+    notificationCount: Int = 0,
+    showNotificationBadges: Boolean = true,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -514,6 +595,27 @@ fun AppBubble(
                 ) {
                     Text(text = timeStr, fontSize = 10.sp, color = Color.White)
                 }
+            }
+            // Notification dot badge
+            if (showNotificationBadges && notificationCount > 0) {
+                val badgeScale by animateFloatAsState(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.5f,
+                        stiffness = 300f
+                    ),
+                    label = "notificationBadgeScale"
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(10.dp)
+                        .scale(badgeScale)
+                        .background(
+                            androidx.compose.material3.MaterialTheme.colorScheme.error,
+                            shape = CircleShape
+                        )
+                )
             }
         }
 
@@ -627,6 +729,8 @@ fun AppBubbleWithMenu(
         ignoreDynamicSize = state.ignoreDynamicSize,
         iconSizeDp = state.iconSizeDp,
         isPinned = state.pinnedApps.contains(app.packageName),
+        notificationCount = state.notificationCounts[app.packageName] ?: 0,
+        showNotificationBadges = state.showNotificationBadges,
         onClick = {
             if (state.delayApps.contains(app.packageName)) {
                 setDelayAppToLaunch(app)
@@ -751,6 +855,27 @@ fun AppBubbleWithMenu(
                         context.startActivity(intent)
                     }
                     setMenuApp(null)
+                }
+            )
+            // Uninstall option
+            DropdownMenuItem(
+                text = { Text(stringResource(id = R.string.menu_uninstall)) },
+                onClick = {
+                    setMenuApp(null)
+                    try {
+                        val appInfo = context.packageManager.getApplicationInfo(app.packageName, 0)
+                        if (appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) {
+                            Toast.makeText(context, context.getString(R.string.confirm_uninstall_system_app), Toast.LENGTH_SHORT).show()
+                        } else {
+                            val uninstallIntent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+                            uninstallIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(uninstallIntent)
+                        }
+                    } catch (_: Exception) {
+                        val uninstallIntent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+                        uninstallIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(uninstallIntent)
+                    }
                 }
             )
         }

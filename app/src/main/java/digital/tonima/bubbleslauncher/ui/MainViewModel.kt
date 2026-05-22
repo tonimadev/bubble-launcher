@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.tonima.bubbleslauncher.data.AppRepository
 import digital.tonima.bubbleslauncher.data.Profile
 import digital.tonima.bubbleslauncher.data.SettingsRepository
+import digital.tonima.bubbleslauncher.notification.NotificationRepository
 import digital.tonima.bubbleslauncher.model.AppInfo
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repository: AppRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val notificationRepository: NotificationRepository
 ) : ViewModel() {
 
     data class MainUiState(
@@ -40,7 +42,10 @@ class MainViewModel @Inject constructor(
         val essentialApps: List<String> = emptyList(),
         val hiddenApps: List<String> = emptyList(),
         val isFocusModeEnabled: Boolean = false,
-        val hasSeenOnboarding: Boolean = false
+        val hasSeenOnboarding: Boolean = false,
+        val notificationCounts: Map<String, Int> = emptyMap(),
+        val showNotificationBadges: Boolean = true,
+        val searchQuery: String = ""
     )
 
     sealed class MainIntent {
@@ -60,6 +65,8 @@ class MainViewModel @Inject constructor(
         data class ToggleHiddenApp(val packageName: String) : MainIntent()
         object ToggleFocusMode : MainIntent()
         object CompleteOnboarding : MainIntent()
+        object ToggleShowNotificationBadges : MainIntent()
+        data class SetSearchQuery(val query: String) : MainIntent()
     }
 
     private val _uiState = MutableStateFlow(MainUiState(isLoading = true))
@@ -162,6 +169,16 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.hasSeenOnboardingFlow.collect { seen ->
                 _uiState.update { it.copy(hasSeenOnboarding = seen) }
+            }
+        }
+        viewModelScope.launch {
+            notificationRepository.notificationCounts.collect { counts ->
+                _uiState.update { it.copy(notificationCounts = counts) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.showNotificationBadgesFlow.collect { show ->
+                _uiState.update { it.copy(showNotificationBadges = show) }
             }
         }
     }
@@ -350,6 +367,17 @@ class MainViewModel @Inject constructor(
                 viewModelScope.launch {
                     settingsRepository.setHasSeenOnboarding(true)
                 }
+            }
+            is MainIntent.ToggleShowNotificationBadges -> {
+                val newValue = !_uiState.value.showNotificationBadges
+                _uiState.update { it.copy(showNotificationBadges = newValue) }
+                viewModelScope.launch {
+                    settingsRepository.setShowNotificationBadges(newValue)
+                    _events.trySend(UiEvent.PreferenceSaved)
+                }
+            }
+            is MainIntent.SetSearchQuery -> {
+                _uiState.update { it.copy(searchQuery = intent.query) }
             }
         }
     }
