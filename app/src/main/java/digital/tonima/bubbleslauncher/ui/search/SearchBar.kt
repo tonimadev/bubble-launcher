@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +39,9 @@ import digital.tonima.bubbleslauncher.R
 fun AppSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Keyboard "search" key: launch the best match. */
+    onSearch: () -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -70,6 +75,8 @@ fun AppSearchBar(
                 .padding(end = if (query.isNotEmpty()) 36.dp else 0.dp)
                 .focusRequester(focusRequester),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             textStyle = TextStyle(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 15.sp,

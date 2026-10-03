@@ -1,0 +1,4 @@
+# Baseline profile: AOT-compile the app's own startup/scroll path (Compose/AndroidX ship their own).
+# Wildcard rules: H = hot, S = startup, L = post-startup.
+HSPLdigital/tonima/bubbleslauncher/**->**(**)**
+Ldigital/tonima/bubbleslauncher/**;

@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "digital.tonima.bubbleslauncher"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "digital.tonima.bubbleslauncher"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -21,7 +21,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -41,6 +42,7 @@ dependencies {
     implementation(libs.androidxCoreKtx)
     implementation(libs.androidxLifecycleRuntimeKtx)
     implementation(libs.androidxActivityCompose)
+    implementation(libs.androidxLifecycleRuntimeCompose)
     implementation(platform(libs.androidxComposeBom))
     implementation(libs.androidxComposeUi)
     implementation(libs.androidxComposeUiGraphics)

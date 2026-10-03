@@ -28,9 +28,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -78,31 +79,27 @@ fun DragDropOverlay(
                             )
                         )
                     )
-                    .padding(top = 48.dp, bottom = 32.dp, start = 16.dp, end = 16.dp),
+                    .padding(top = 8.dp, bottom = 32.dp, start = 4.dp, end = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DropZoneItem(
-                    label = stringResource(id = R.string.drag_uninstall),
-                    icon = "🗑️",
-                    isActive = dragDropState.activeDropZone == DropZone.UNINSTALL,
-                    activeColor = Color(0xFFFF5252),
-                    modifier = Modifier.weight(1f)
-                )
-                DropZoneItem(
-                    label = stringResource(id = R.string.drag_app_info),
-                    icon = "ℹ️",
-                    isActive = dragDropState.activeDropZone == DropZone.APP_INFO,
-                    activeColor = Color(0xFF448AFF),
-                    modifier = Modifier.weight(1f)
-                )
-                DropZoneItem(
-                    label = stringResource(id = R.string.drag_hide),
-                    icon = "👁️",
-                    isActive = dragDropState.activeDropZone == DropZone.HIDE,
-                    activeColor = Color(0xFFFFD740),
-                    modifier = Modifier.weight(1f)
-                )
+                @Composable
+                fun Zone(zone: DropZone, labelRes: Int, icon: String, color: Color) {
+                    DropZoneItem(
+                        label = stringResource(id = labelRes),
+                        icon = icon,
+                        isActive = dragDropState.activeDropZone == zone,
+                        activeColor = color,
+                        modifier = Modifier
+                            .weight(1f)
+                            .onGloballyPositioned { dragDropState.zoneBounds[zone] = it.boundsInRoot() }
+                    )
+                }
+                Zone(DropZone.PIN, R.string.drag_pin, "📌", Color(0xFF69F0AE))
+                Zone(DropZone.DOCK, R.string.drag_dock, "⚓", Color(0xFFE040FB))
+                Zone(DropZone.APP_INFO, R.string.drag_app_info, "ℹ️", Color(0xFF448AFF))
+                Zone(DropZone.HIDE, R.string.drag_hide, "👁️", Color(0xFFFFD740))
+                Zone(DropZone.UNINSTALL, R.string.drag_uninstall, "🗑️", Color(0xFFFF5252))
             }
         }
     }
@@ -137,7 +134,7 @@ private fun DropZoneItem(
     Column(
         modifier = modifier
             .scale(scale)
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = 4.dp)
             .background(
                 backgroundColor,
                 shape = RoundedCornerShape(16.dp)
@@ -151,7 +148,7 @@ private fun DropZoneItem(
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
-            .padding(vertical = 16.dp, horizontal = 12.dp),
+            .padding(vertical = 14.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -163,28 +160,8 @@ private fun DropZoneItem(
         Text(
             text = label,
             color = if (isActive) activeColor else Color.White,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
         )
-    }
-}
-
-/**
- * Determines which drop zone the current drag position is over.
- * The drop zones occupy the top portion of the screen, split into thirds.
- */
-fun resolveDropZone(
-    dragY: Float,
-    dragX: Float,
-    screenWidth: Float,
-    dropZoneHeight: Float = 400f // approximate height in pixels of the drop zone area
-): DropZone? {
-    if (dragY > dropZoneHeight) return null
-
-    val thirdWidth = screenWidth / 3f
-    return when {
-        dragX < thirdWidth -> DropZone.UNINSTALL
-        dragX < thirdWidth * 2 -> DropZone.APP_INFO
-        else -> DropZone.HIDE
     }
 }

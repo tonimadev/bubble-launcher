@@ -167,6 +167,18 @@ class MainActivity : ComponentActivity() {
                 val (showMetrics, setShowMetrics) = remember { mutableStateOf(false) }
                 val selectedProfile = state.selectedProfile
 
+                // Home pressed while already on screen: leave Settings/Metrics too.
+                LaunchedEffect(state.homePressCount) {
+                    if (state.homePressCount > 0) {
+                        setShowSettings(false)
+                        setShowMetrics(false)
+                    }
+                }
+                androidx.activity.compose.BackHandler(enabled = showSettings || showMetrics) {
+                    setShowSettings(false)
+                    setShowMetrics(false)
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = if (state.useSystemWallpaper) androidx.compose.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.65f) else androidx.compose.material3.MaterialTheme.colorScheme.background,
@@ -349,8 +361,8 @@ class MainActivity : ComponentActivity() {
                             is MainViewModel.UiEvent.PinSaved -> {
                                 snackbarHostState.showSnackbar(pinSavedMsg)
                             }
-                            is MainViewModel.UiEvent.Message -> {
-                                snackbarHostState.showSnackbar(event.text)
+                            is MainViewModel.UiEvent.MessageRes -> {
+                                snackbarHostState.showSnackbar(getString(event.resId, *event.args.toTypedArray()))
                             }
                         }
                     }
@@ -367,6 +379,14 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         widgetHostManager.stopListening()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // The Home button re-delivers the HOME intent to this singleTask activity.
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            viewModel.submitIntent(MainViewModel.MainIntent.GoHome)
+        }
     }
 
     override fun onResume() {
@@ -472,13 +492,13 @@ fun SettingsScreen(
 
         // APARÊNCIA SECTION
         SettingsSectionCard(
-            title = "Aparencia",
+            title = stringResource(id = R.string.settings_section_appearance),
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Show Names Toggle
                     SettingsToggleItem(
                         label = stringResource(id = R.string.label_show_names),
-                        description = "Exibir nomes dos aplicativos",
+                        description = stringResource(id = R.string.settings_show_names_desc),
                         checked = showNames,
                         onCheckedChange = { onToggleShowNames() }
                     )
@@ -486,7 +506,7 @@ fun SettingsScreen(
                     // Usage Badges Toggle
                     SettingsToggleItem(
                         label = stringResource(id = R.string.label_show_usage_badges),
-                        description = "Mostrar tempo de uso",
+                        description = stringResource(id = R.string.settings_usage_badges_desc),
                         checked = showUsageBadges,
                         onCheckedChange = { onToggleShowUsageBadges() }
                     )
@@ -502,7 +522,7 @@ fun SettingsScreen(
                     // System Wallpaper Toggle
                     SettingsToggleItem(
                         label = stringResource(id = R.string.label_use_system_wallpaper),
-                        description = "Usar papel de parede do sistema",
+                        description = stringResource(id = R.string.settings_system_wallpaper_desc),
                         checked = useSystemWallpaper,
                         onCheckedChange = { onToggleUseSystemWallpaper() }
                     )
@@ -510,7 +530,7 @@ fun SettingsScreen(
                     // Icon Size Slider
                     SettingsSliderItem(
                         label = stringResource(id = R.string.label_icon_size),
-                        description = "Tamanho dos ícones: ${iconSizeDp} dp",
+                        description = stringResource(id = R.string.settings_icon_size_desc, iconSizeDp),
                         value = iconSizeDp.toFloat(),
                         onValueChange = { raw ->
                             val stepSize = 10f
@@ -530,12 +550,12 @@ fun SettingsScreen(
 
         // COMPORTAMENTO SECTION
         SettingsSectionCard(
-            title = "Comportamento",
+            title = stringResource(id = R.string.settings_section_behavior),
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SettingsToggleItem(
                         label = stringResource(id = R.string.label_ignore_dynamic_size),
-                        description = "Usar tamanho fixo para ícones",
+                        description = stringResource(id = R.string.settings_fixed_size_desc),
                         checked = ignoreDynamicSize,
                         onCheckedChange = { onToggleIgnoreDynamicSize() }
                     )
@@ -545,7 +565,7 @@ fun SettingsScreen(
 
         // TEMA SECTION
         SettingsSectionCard(
-            title = "Tema",
+            title = stringResource(id = R.string.settings_section_theme),
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     listOf(
@@ -593,7 +613,7 @@ fun SettingsScreen(
                                 val intent = Intent(Intent.ACTION_SET_WALLPAPER)
                                 context.startActivity(intent)
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Unable to open wallpaper picker", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, R.string.settings_wallpaper_unavailable, Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -609,7 +629,7 @@ fun SettingsScreen(
         if (hiddenAppsList.isNotEmpty() || hiddenAppPackages.isNotEmpty()) {
             val hiddenAppsByPackage = hiddenAppsList.associateBy { it.packageName }
             SettingsSectionCard(
-                title = "Aplicativos ocultos (${hiddenAppPackages.size})",
+                title = stringResource(id = R.string.settings_hidden_apps_title, hiddenAppPackages.size),
                 content = {
                     Column(
                         modifier = Modifier

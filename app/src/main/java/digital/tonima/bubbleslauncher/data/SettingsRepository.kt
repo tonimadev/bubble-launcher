@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import digital.tonima.bubbleslauncher.model.AppFolder
+import digital.tonima.bubbleslauncher.model.FolderCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -35,6 +37,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val FOCUS_MODE_ENABLED = booleanPreferencesKey("focus_mode_enabled")
         private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
         private val SHOW_NOTIFICATION_BADGES = booleanPreferencesKey("show_notification_badges")
+        private val DOCK_APPS = stringPreferencesKey("dock_apps_list")
+        private val FOLDERS = stringPreferencesKey("folders")
     }
 
     private val dataStore = context.dataStore
@@ -94,6 +98,13 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     val hiddenAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
         val str = prefs[HIDDEN_APPS]
+        if (str.isNullOrEmpty()) emptyList() else str.split(",")
+    }
+
+    val foldersFlow: Flow<List<AppFolder>> = dataStore.data.map { prefs -> FolderCodec.decode(prefs[FOLDERS]) }
+
+    val dockAppsFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        val str = prefs[DOCK_APPS]
         if (str.isNullOrEmpty()) emptyList() else str.split(",")
     }
 
@@ -188,6 +199,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     suspend fun setHiddenApps(values: List<String>) {
         dataStore.edit { prefs -> prefs[HIDDEN_APPS] = values.joinToString(",") }
+    }
+
+    suspend fun setFolders(values: List<AppFolder>) {
+        dataStore.edit { prefs -> prefs[FOLDERS] = FolderCodec.encode(values) }
+    }
+
+    suspend fun setDockApps(values: List<String>) {
+        dataStore.edit { prefs -> prefs[DOCK_APPS] = values.joinToString(",") }
     }
 
     suspend fun setFocusModeEnabled(value: Boolean) {

@@ -1,23 +1,31 @@
 package digital.tonima.bubbleslauncher.ui
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.tonima.bubbleslauncher.R
 import digital.tonima.bubbleslauncher.data.AppRepository
 import digital.tonima.bubbleslauncher.data.Profile
 import digital.tonima.bubbleslauncher.data.SettingsRepository
 import digital.tonima.bubbleslauncher.notification.NotificationRepository
+import digital.tonima.bubbleslauncher.model.AppFolder
 import digital.tonima.bubbleslauncher.model.AppInfo
+import digital.tonima.bubbleslauncher.model.FolderOps
+import digital.tonima.bubbleslauncher.ui.drag.DragLogic
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.receiveAsFlow
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repository: AppRepository,
@@ -45,13 +53,19 @@ class MainViewModel @Inject constructor(
         val hasSeenOnboarding: Boolean = false,
         val notificationCounts: Map<String, Int> = emptyMap(),
         val showNotificationBadges: Boolean = true,
-        val searchQuery: String = ""
+        val searchQuery: String = "",
+        val dockApps: List<String> = emptyList(),
+        val folders: List<AppFolder> = emptyList(),
+        /** Bumped every time the Home button is pressed while the launcher is already on screen. */
+        val homePressCount: Int = 0
     )
 
     sealed class MainIntent {
         object LoadApps : MainIntent()
         data class ToggleHighlight(val packageName: String) : MainIntent()
         data class TogglePin(val packageName: String) : MainIntent()
+        /** Drag-reorder: move [packageName] to the slot currently held by [target] in Favorites. */
+        data class MovePinned(val packageName: String, val target: String) : MainIntent()
         data class SetIconSize(val dp: Int) : MainIntent()
         data class SetThemeMode(val mode: String) : MainIntent()
         object ToggleShowAppNames : MainIntent()
@@ -67,6 +81,15 @@ class MainViewModel @Inject constructor(
         object CompleteOnboarding : MainIntent()
         object ToggleShowNotificationBadges : MainIntent()
         data class SetSearchQuery(val query: String) : MainIntent()
+        data class ToggleDock(val packageName: String) : MainIntent()
+        data class CreateFolder(val name: String, val packageName: String) : MainIntent()
+        data class AddToFolder(val folderId: String, val packageName: String) : MainIntent()
+        data class RemoveFromFolder(val packageName: String) : MainIntent()
+        data class RenameFolder(val folderId: String, val name: String) : MainIntent()
+        data class DeleteFolder(val folderId: String) : MainIntent()
+        data class MoveDock(val packageName: String, val target: String) : MainIntent()
+        /** Home pressed: reset to a clean state (search cleared, scrolled to top). */
+        object GoHome : MainIntent()
     }
 
     private val _uiState = MutableStateFlow(MainUiState(isLoading = true))
@@ -76,7 +99,7 @@ class MainViewModel @Inject constructor(
         object PreferenceSaved : UiEvent()
         object HighlightSaved : UiEvent()
         object PinSaved : UiEvent()
-        data class Message(val text: String) : UiEvent()
+        data class MessageRes(@StringRes val resId: Int, val args: List<Any> = emptyList()) : UiEvent()
     }
 
     private val _events = Channel<UiEvent>(Channel.BUFFERED)
@@ -157,6 +180,16 @@ class MainViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsRepository.foldersFlow.collect { list ->
+                _uiState.update { it.copy(folders = list) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.dockAppsFlow.collect { list ->
+                _uiState.update { it.copy(dockApps = list) }
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.hiddenAppsFlow.collect { list ->
                 _uiState.update { it.copy(hiddenApps = list) }
             }
@@ -176,11 +209,39 @@ class MainViewModel @Inject constructor(
                 _uiState.update { it.copy(notificationCounts = counts) }
             }
         }
+        // Reload when apps are installed/removed/updated (debounced: installs fire several callbacks).
+        viewModelScope.launch {
+            repository.packageChanges.debounce(300).collect { submitIntent(MainIntent.LoadApps) }
+        }
         viewModelScope.launch {
             settingsRepository.showNotificationBadgesFlow.collect { show ->
                 _uiState.update { it.copy(showNotificationBadges = show) }
             }
         }
+    }
+
+    /** Loads apps for the selected profile. Cheap when cached; ordering/sections are derived in the UI. */
+    private suspend fun loadApps() {
+        if (_uiState.value.apps.isEmpty()) _uiState.update { it.copy(isLoading = true) }
+        try {
+            val apps = repository.getAppsForProfile(_uiState.value.selectedProfile)
+                .sortedByDescending { it.totalTimeInForeground }
+            _uiState.update { it.copy(apps = apps, isLoading = false) }
+        } catch (t: Throwable) {
+            _uiState.update { it.copy(apps = emptyList(), isLoading = false) }
+            _events.trySend(UiEvent.MessageRes(R.string.msg_load_apps_failed, listOf(t.message.orEmpty())))
+        }
+    }
+
+    private fun setFolders(list: List<AppFolder>) {
+        if (list == _uiState.value.folders) return
+        _uiState.update { it.copy(folders = list) }
+        viewModelScope.launch { settingsRepository.setFolders(list) }
+    }
+
+    private fun setDock(list: List<String>) {
+        _uiState.update { it.copy(dockApps = list) }
+        viewModelScope.launch { settingsRepository.setDockApps(list) }
     }
 
     fun submitIntent(intent: MainIntent) {
@@ -189,23 +250,7 @@ class MainViewModel @Inject constructor(
 
     private suspend fun handleIntent(intent: MainIntent) {
         when (intent) {
-            is MainIntent.LoadApps -> {
-                _uiState.update { it.copy(isLoading = true) }
-                try {
-                    // Load apps for the currently selected profile so the selection persists across resumes
-                    val profile = _uiState.value.selectedProfile
-                    val apps = repository.getAppsForProfile(profile)
-                    val sorted = apps.sortedByDescending { it.totalTimeInForeground }
-                    val pinned = _uiState.value.pinnedApps
-                    val pinnedAppsList = pinned.mapNotNull { p -> apps.find { it.packageName == p } }
-                    val others = sorted.filterNot { pinned.contains(it.packageName) }
-                    val ordered = pinnedAppsList + others
-                    _uiState.update { it.copy(apps = ordered, isLoading = false) }
-                } catch (t: Throwable) {
-                    _uiState.update { it.copy(apps = emptyList(), isLoading = false) }
-                    _events.trySend(UiEvent.Message("Falha ao carregar aplicativos: ${t.message}"))
-                }
-            }
+            is MainIntent.LoadApps -> loadApps()
             is MainIntent.ToggleHighlight -> {
                 val pkg = intent.packageName
                 _uiState.update { state ->
@@ -226,24 +271,17 @@ class MainViewModel @Inject constructor(
             is MainIntent.TogglePin -> {
                 val pkg = intent.packageName
                 _uiState.update { state ->
-                    val isCurrentlyPinned = state.pinnedApps.contains(pkg)
-                    val newList = if (isCurrentlyPinned) {
-                        state.pinnedApps - pkg
-                    } else {
-                        listOf(pkg) + state.pinnedApps
-                    }
-
-                    val pinnedAppsList = newList.mapNotNull { p -> state.apps.find { it.packageName == p } }
-                    val others = state.apps.filterNot { newList.contains(it.packageName) }
-                        .sortedByDescending { it.totalTimeInForeground }
-                    val newApps = pinnedAppsList + others
-                    state.copy(pinnedApps = newList, apps = newApps)
+                    val newList = if (pkg in state.pinnedApps) state.pinnedApps - pkg else listOf(pkg) + state.pinnedApps
+                    state.copy(pinnedApps = newList)
                 }
                 viewModelScope.launch {
-                    val currently = _uiState.value.pinnedApps
-                    settingsRepository.setPinnedApps(currently)
+                    settingsRepository.setPinnedApps(_uiState.value.pinnedApps)
                     _events.trySend(UiEvent.PinSaved)
                 }
+            }
+            is MainIntent.MovePinned -> {
+                _uiState.update { it.copy(pinnedApps = DragLogic.moveTo(it.pinnedApps, intent.packageName, intent.target)) }
+                viewModelScope.launch { settingsRepository.setPinnedApps(_uiState.value.pinnedApps) }
             }
             is MainIntent.ToggleShowAppNames -> {
                 val newValue = !_uiState.value.showAppNames
@@ -294,28 +332,15 @@ class MainViewModel @Inject constructor(
                 }
             }
             is MainIntent.SelectProfile -> {
-                // persist selected profile and load apps for it
-                _uiState.update { it.copy(selectedProfile = intent.profile, isLoading = true) }
+                _uiState.update { it.copy(selectedProfile = intent.profile) }
                 viewModelScope.launch {
                     try {
                         settingsRepository.setSelectedProfile(if (intent.profile == Profile.WORK) "work" else "personal")
                     } catch (_: Exception) { /* ignore persisting errors */ }
-
-                    try {
-                        val apps = repository.getAppsForProfile(intent.profile)
-                        val sorted = apps.sortedByDescending { it.totalTimeInForeground }
-                        val pinned = _uiState.value.pinnedApps
-                        val pinnedAppsList = pinned.mapNotNull { p -> apps.find { it.packageName == p } }
-                        val others = sorted.filterNot { pinned.contains(it.packageName) }
-                        val ordered = pinnedAppsList + others
-                        _uiState.update { it.copy(apps = ordered, isLoading = false) }
-                        if (intent.profile == Profile.WORK && apps.isEmpty()) {
-                            _events.trySend(UiEvent.Message("Nenhum aplicativo encontrado no perfil de trabalho (ou permissão faltando)."))
-                        }
-                    } catch (t: Throwable) {
-                        _uiState.update { it.copy(apps = emptyList(), isLoading = false) }
-                        _events.trySend(UiEvent.Message("Falha ao carregar apps do perfil: ${t.message}"))
-                    }
+                }
+                loadApps()
+                if (intent.profile == Profile.WORK && _uiState.value.apps.isEmpty()) {
+                    _events.trySend(UiEvent.MessageRes(R.string.msg_work_profile_empty))
                 }
             }
             is MainIntent.SetApps -> {
@@ -376,6 +401,24 @@ class MainViewModel @Inject constructor(
                     _events.trySend(UiEvent.PreferenceSaved)
                 }
             }
+            is MainIntent.CreateFolder -> setFolders(
+                FolderOps.create(_uiState.value.folders, intent.name, intent.packageName, UUID.randomUUID().toString().take(8))
+            )
+            is MainIntent.AddToFolder -> setFolders(FolderOps.addApp(_uiState.value.folders, intent.folderId, intent.packageName))
+            is MainIntent.RemoveFromFolder -> setFolders(FolderOps.removeApp(_uiState.value.folders, intent.packageName))
+            is MainIntent.RenameFolder -> setFolders(FolderOps.rename(_uiState.value.folders, intent.folderId, intent.name))
+            is MainIntent.DeleteFolder -> setFolders(FolderOps.delete(_uiState.value.folders, intent.folderId))
+            is MainIntent.ToggleDock -> {
+                val pkg = intent.packageName
+                val current = _uiState.value.dockApps
+                when {
+                    pkg in current -> setDock(current - pkg)
+                    current.size >= AppSections.MAX_DOCK -> _events.trySend(UiEvent.MessageRes(R.string.msg_dock_full))
+                    else -> setDock(current + pkg)
+                }
+            }
+            is MainIntent.MoveDock -> setDock(DragLogic.moveTo(_uiState.value.dockApps, intent.packageName, intent.target))
+            is MainIntent.GoHome -> _uiState.update { it.copy(searchQuery = "", homePressCount = it.homePressCount + 1) }
             is MainIntent.SetSearchQuery -> {
                 _uiState.update { it.copy(searchQuery = intent.query) }
             }

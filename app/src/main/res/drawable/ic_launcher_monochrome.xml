@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer (Android 13+): single-colour silhouette, the system tints the alpha channel. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.2"
+        android:pathData="M28,56a22,22 0 1,0 44,0a22,22 0 1,0 -44,0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:pathData="M37,48.5A15,15 0 0,1 42.5,43" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M62,39a8,8 0 1,0 16,0a8,8 0 1,0 -16,0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2.6"
+        android:pathData="M33.5,35a4.5,4.5 0 1,0 9,0a4.5,4.5 0 1,0 -9,0z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M64.5,74a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0z" />
+</vector>

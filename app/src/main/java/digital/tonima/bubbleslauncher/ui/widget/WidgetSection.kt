@@ -11,7 +11,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import android.view.ViewGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +48,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -48,32 +55,22 @@ import androidx.compose.ui.viewinterop.AndroidView
 import digital.tonima.bubbleslauncher.R
 import digital.tonima.bubbleslauncher.data.WidgetRepository
 import digital.tonima.bubbleslauncher.data.model.WidgetEntry
-import digital.tonima.bubbleslauncher.ui.AppSectionHeader
+import digital.tonima.bubbleslauncher.widget.WidgetSizing
 import digital.tonima.bubbleslauncher.widget.WidgetHostManager
 import kotlinx.coroutines.launch
 
 /**
- * Adds the widget section items into a [LazyGridScope].
- * Must be called inside a `LazyVerticalGrid`'s `content` block.
+ * Adds the widgets into a [LazyGridScope] (call inside a `LazyVerticalGrid` content block).
  *
- * Shows:
- *  - Section header "Widgets"
- *  - Each persisted widget rendered as a full-span [AndroidView]
- *  - An "Add widget" button
+ * Widgets sit directly at the top of the grid with rounded corners matching the rest of the UI;
+ * there is no heading, and adding one is a compact tonal button under them.
  */
-@OptIn(ExperimentalFoundationApi::class)
 fun LazyGridScope.widgetSectionItems(
     widgets: List<WidgetEntry>,
     widgetHostManager: WidgetHostManager,
     onRemoveWidget: (Int) -> Unit,
     onAddWidgetClick: () -> Unit
 ) {
-    // Section header
-    item(span = { GridItemSpan(maxLineSpan) }, key = "widget_section_header") {
-        AppSectionHeader(stringResource(id = R.string.section_widgets_title))
-    }
-
-    // Each widget as full-span item
     items(
         count = widgets.size,
         key = { index -> "widget_${widgets[index].appWidgetId}" },
@@ -88,31 +85,30 @@ fun LazyGridScope.widgetSectionItems(
     }
 
     item(span = { GridItemSpan(maxLineSpan) }, key = "widget_add_button") {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.Start
         ) {
-            OutlinedButton(onClick = onAddWidgetClick) {
-                Text(text = "+ " + stringResource(id = R.string.widget_add))
+            FilledTonalButton(
+                onClick = onAddWidgetClick,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(text = "+  " + stringResource(id = R.string.widget_add))
             }
         }
     }
 }
 
 /**
- * Renders a single widget inside an [AndroidView].
- * Long-press shows a dropdown to remove the widget.
+ * Renders one widget in an [AndroidView].
  *
- * The [AppWidgetHostView] is cached via [remember] so that
- * LazyGrid recycling doesn't create duplicate views for the same
- * widget ID (which causes the new view to be blank).
- *
- * Because [AppWidgetHostView] is a native Android view that consumes
- * all touch events, we place an invisible overlay on top that only
- * intercepts long-press gestures — normal taps/scrolls pass through
- * to the widget underneath.
+ * Two things matter for widgets to actually load and feel native:
+ *  - The host view must be told its size ([AppWidgetHostView.updateAppWidgetSize]); providers
+ *    such as clocks render by size and produce an empty layout for the default 0x0.
+ *  - Long-press is attached to the host view itself. An overlay composable on top would swallow
+ *    every touch and make the widget non-interactive.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -122,6 +118,7 @@ private fun WidgetItem(
     onRemove: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current.density
     var showMenu by remember { mutableStateOf(false) }
 
     val providerInfo: AppWidgetProviderInfo? = remember(entry.appWidgetId) {
@@ -132,82 +129,81 @@ private fun WidgetItem(
         }
     }
 
-    // Cache the host view so it survives recomposition/recycling
-    val hostView = remember(entry.appWidgetId, providerInfo) {
+    // Derived from the provider's declared size (px -> dp), so entries saved with older, wrong
+    // heights fix themselves.
+    val heightDp = remember(providerInfo, density) {
         if (providerInfo != null) {
+            WidgetSizing.heightDp(providerInfo.minHeight, providerInfo.minResizeHeight, density)
+        } else {
+            entry.heightDp
+        }
+    }
+
+    val hostView = remember(entry.appWidgetId, providerInfo) {
+        providerInfo?.let {
             try {
-                widgetHostManager.createView(context, entry.appWidgetId, providerInfo)
+                widgetHostManager.createView(context, entry.appWidgetId, it)
             } catch (_: Exception) {
                 null
             }
-        } else null
+        }
     }
+
+    val shape = RoundedCornerShape(28.dp)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(vertical = 4.dp)
+            .clip(shape)
     ) {
         if (hostView != null) {
             AndroidView(
                 factory = {
-                    // Detach from previous parent if recycled by LazyGrid
-                    (hostView.parent as? android.view.ViewGroup)?.removeView(hostView)
+                    // Detach from a previous parent if the grid recycled this item.
+                    (hostView.parent as? ViewGroup)?.removeView(hostView)
                     hostView.apply {
                         layoutParams = FrameLayout.LayoutParams(
                             FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.WRAP_CONTENT
+                            FrameLayout.LayoutParams.MATCH_PARENT
                         )
                     }
                 },
+                update = { it.setOnLongClickListener { showMenu = true; true } },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(entry.heightDp.dp)
-            )
-
-            // Invisible overlay that detects long-press on top of the native widget view.
-            // We use pointerInput with detectTapGestures(onLongPress) which only fires
-            // after the long-press threshold — short taps are ignored and fall through
-            // to the AndroidView below.
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = { showMenu = true }
-                        )
+                    .height(heightDp.dp)
+                    .onSizeChanged { size ->
+                        val w = WidgetSizing.pxToDp(size.width, density)
+                        val h = WidgetSizing.pxToDp(size.height, density)
+                        if (w > 0 && h > 0) hostView.updateAppWidgetSize(Bundle(), w, h, w, h)
                     }
             )
         } else {
-            // Widget provider was uninstalled or unavailable
-            Text(
-                text = stringResource(id = R.string.widget_no_widgets),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Provider uninstalled/unavailable: show a placeholder that can still be removed.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(entry.heightDp.dp)
-                    .padding(16.dp)
-            )
+                    .height(heightDp.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape)
+                    .combinedClickable(onClick = {}, onLongClick = { showMenu = true }),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(id = R.string.widget_no_widgets),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false }
-        ) {
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
             DropdownMenuItem(
                 text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "🗑️",
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(id = R.string.widget_remove),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
+                    Text(
+                        text = stringResource(id = R.string.widget_remove),
+                        color = MaterialTheme.colorScheme.error
+                    )
                 },
                 onClick = {
                     showMenu = false
@@ -237,6 +233,7 @@ fun rememberWidgetPickerLauncher(
     widgetRepository: WidgetRepository
 ): () -> Unit {
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current.density
     var pendingWidgetId by remember { mutableIntStateOf(0) }
     var pendingProvider by remember { mutableStateOf<android.content.ComponentName?>(null) }
 
@@ -248,7 +245,7 @@ fun rememberWidgetPickerLauncher(
         if (result.resultCode == Activity.RESULT_OK && widgetId != 0) {
             scope.launch {
                 val info = widgetHostManager.getAppWidgetManager().getAppWidgetInfo(widgetId)
-                val height = info?.minHeight?.let { it / 2 }?.coerceIn(100, 400) ?: 200
+                val height = WidgetSizing.heightDp(info?.minHeight ?: 0, info?.minResizeHeight ?: 0, density)
                 widgetRepository.addWidget(widgetId, height)
             }
         } else if (widgetId != 0) {
@@ -268,7 +265,7 @@ fun rememberWidgetPickerLauncher(
             }
             configureLauncher.launch(configIntent)
         } else {
-            val height = info?.minHeight?.let { it / 2 }?.coerceIn(100, 400) ?: 200
+            val height = WidgetSizing.heightDp(info?.minHeight ?: 0, info?.minResizeHeight ?: 0, density)
             scope.launch {
                 widgetRepository.addWidget(widgetId, height)
             }
