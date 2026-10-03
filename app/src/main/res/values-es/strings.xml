@@ -86,4 +86,8 @@
     <string name="folder_save">Guardar</string>
     <string name="folder_close">Cerrar</string>
     <string name="folder_picker_title">Elegir carpeta</string>
+    <string name="widget_resize">Redimensionar</string>
+    <string name="widget_resize_done">Listo</string>
+    <string name="widget_width_half">Mitad de ancho</string>
+    <string name="widget_width_full">Ancho completo</string>
 </resources>

@@ -86,4 +86,8 @@
     <string name="folder_save">Сохранить</string>
     <string name="folder_close">Закрыть</string>
     <string name="folder_picker_title">Выберите папку</string>
+    <string name="widget_resize">Изменить размер</string>
+    <string name="widget_resize_done">Готово</string>
+    <string name="widget_width_half">Половина ширины</string>
+    <string name="widget_width_full">Вся ширина</string>
 </resources>

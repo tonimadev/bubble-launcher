@@ -15,6 +15,9 @@ interface WidgetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWidget(widget: WidgetEntry): Long
 
+    @Query("UPDATE widgets SET heightDp = :heightDp, halfWidth = :halfWidth WHERE appWidgetId = :appWidgetId")
+    suspend fun updateLayout(appWidgetId: Int, heightDp: Int, halfWidth: Boolean)
+
     @Query("DELETE FROM widgets WHERE appWidgetId = :appWidgetId")
     suspend fun deleteByWidgetId(appWidgetId: Int)
 

@@ -96,4 +96,8 @@
     <string name="folder_save">সংরক্ষণ</string>
     <string name="folder_close">বন্ধ করুন</string>
     <string name="folder_picker_title">ফোল্ডার বেছে নিন</string>
+    <string name="widget_resize">আকার পরিবর্তন</string>
+    <string name="widget_resize_done">হয়ে গেছে</string>
+    <string name="widget_width_half">অর্ধেক প্রস্থ</string>
+    <string name="widget_width_full">পূর্ণ প্রস্থ</string>
 </resources>

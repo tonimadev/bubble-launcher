@@ -86,4 +86,8 @@
     <string name="folder_save">Speichern</string>
     <string name="folder_close">Schließen</string>
     <string name="folder_picker_title">Ordner auswählen</string>
+    <string name="widget_resize">Größe ändern</string>
+    <string name="widget_resize_done">Fertig</string>
+    <string name="widget_width_half">Halbe Breite</string>
+    <string name="widget_width_full">Volle Breite</string>
 </resources>

@@ -200,6 +200,7 @@ fun MainScreen(
         val density = LocalDensity.current
         var menuPkg by remember { mutableStateOf<String?>(null) }
         var openFolderId by remember { mutableStateOf<String?>(null) }
+        var resizingWidgetId by remember { mutableStateOf<Int?>(null) }
         var folderPickerFor by remember { mutableStateOf<AppInfo?>(null) }
         var gridBottomRoot by remember { mutableFloatStateOf(0f) }
 
@@ -263,6 +264,7 @@ fun MainScreen(
         LaunchedEffect(state.homePressCount) {
             if (state.homePressCount > 0) {
                 menuPkg = null
+                resizingWidgetId = null
                 dragState.cancelDrag()
                 focusManager.clearFocus()
                 gridState.animateScrollToItem(0)
@@ -358,6 +360,11 @@ fun MainScreen(
                     widgetSectionItems(
                         widgets = widgets,
                         widgetHostManager = widgetHostManager,
+                        resizingId = resizingWidgetId,
+                        onResizingChange = { resizingWidgetId = it },
+                        onResize = { id, height, half ->
+                            scope.launch { widgetRepository.updateLayout(id, height, half) }
+                        },
                         onRemoveWidget = { appWidgetId ->
                             scope.launch { widgetRepository.removeWidget(appWidgetId) }
                         },

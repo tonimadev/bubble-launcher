@@ -86,4 +86,8 @@
     <string name="folder_save">حفظ</string>
     <string name="folder_close">إغلاق</string>
     <string name="folder_picker_title">اختيار مجلد</string>
+    <string name="widget_resize">تغيير الحجم</string>
+    <string name="widget_resize_done">تم</string>
+    <string name="widget_width_half">نصف العرض</string>
+    <string name="widget_width_full">العرض الكامل</string>
 </resources>

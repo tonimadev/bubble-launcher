@@ -86,4 +86,8 @@
     <string name="folder_save">सहेजें</string>
     <string name="folder_close">बंद करें</string>
     <string name="folder_picker_title">फ़ोल्डर चुनें</string>
+    <string name="widget_resize">आकार बदलें</string>
+    <string name="widget_resize_done">हो गया</string>
+    <string name="widget_width_half">आधी चौड़ाई</string>
+    <string name="widget_width_full">पूरी चौड़ाई</string>
 </resources>

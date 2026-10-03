@@ -86,4 +86,8 @@
     <string name="folder_save">保存</string>
     <string name="folder_close">关闭</string>
     <string name="folder_picker_title">选择文件夹</string>
+    <string name="widget_resize">调整大小</string>
+    <string name="widget_resize_done">完成</string>
+    <string name="widget_width_half">半宽</string>
+    <string name="widget_width_full">全宽</string>
 </resources>

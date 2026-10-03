@@ -86,4 +86,8 @@
     <string name="folder_save">Enregistrer</string>
     <string name="folder_close">Fermer</string>
     <string name="folder_picker_title">Choisir un dossier</string>
+    <string name="widget_resize">Redimensionner</string>
+    <string name="widget_resize_done">Terminé</string>
+    <string name="widget_width_half">Demi-largeur</string>
+    <string name="widget_width_full">Pleine largeur</string>
 </resources>

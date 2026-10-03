@@ -86,4 +86,8 @@
     <string name="folder_save">محفوظ کریں</string>
     <string name="folder_close">بند کریں</string>
     <string name="folder_picker_title">فولڈر منتخب کریں</string>
+    <string name="widget_resize">سائز تبدیل کریں</string>
+    <string name="widget_resize_done">ہو گیا</string>
+    <string name="widget_width_half">آدھی چوڑائی</string>
+    <string name="widget_width_full">پوری چوڑائی</string>
 </resources>

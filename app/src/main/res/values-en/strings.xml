@@ -127,4 +127,8 @@
     <string name="folder_save">Save</string>
     <string name="folder_close">Close</string>
     <string name="folder_picker_title">Choose folder</string>
+    <string name="widget_resize">Resize</string>
+    <string name="widget_resize_done">Done</string>
+    <string name="widget_width_half">Half width</string>
+    <string name="widget_width_full">Full width</string>
 </resources>

@@ -29,6 +29,11 @@ class WidgetRepository @Inject constructor(
         return widgetDao.insertWidget(entry)
     }
 
+    /** Persist the size the user chose by resizing the widget. */
+    suspend fun updateLayout(appWidgetId: Int, heightDp: Int, halfWidth: Boolean) {
+        widgetDao.updateLayout(appWidgetId, heightDp, halfWidth)
+    }
+
     /**
      * Remove a widget both from persistence and the system host so its ID can
      * be reclaimed.

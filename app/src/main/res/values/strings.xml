@@ -132,4 +132,8 @@
     <string name="folder_save">Salvar</string>
     <string name="folder_close">Fechar</string>
     <string name="folder_picker_title">Escolher pasta</string>
+    <string name="widget_resize">Redimensionar</string>
+    <string name="widget_resize_done">Concluir</string>
+    <string name="widget_width_half">Metade da largura</string>
+    <string name="widget_width_full">Largura total</string>
 </resources>

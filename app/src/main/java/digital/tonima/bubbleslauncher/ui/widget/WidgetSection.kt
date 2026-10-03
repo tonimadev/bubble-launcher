@@ -20,6 +20,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import android.view.ViewGroup
+import kotlin.math.roundToInt
+import digital.tonima.bubbleslauncher.widget.LongPressFrameLayout
+import digital.tonima.bubbleslauncher.widget.WidgetLayout
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,26 +72,46 @@ import kotlinx.coroutines.launch
 /**
  * Adds the widgets into a [LazyGridScope] (call inside a `LazyVerticalGrid` content block).
  *
- * Widgets sit directly at the top of the grid with rounded corners matching the rest of the UI;
- * there is no heading, and adding one is a compact tonal button under them.
+ * Each widget is either full width or half width; consecutive half-width widgets share a row.
+ * Widgets sit directly at the top of the grid with rounded corners; adding one is a compact
+ * tonal button under them. A long-press menu offers Resize (height handle + width toggle) and Remove.
  */
 fun LazyGridScope.widgetSectionItems(
     widgets: List<WidgetEntry>,
     widgetHostManager: WidgetHostManager,
+    resizingId: Int?,
+    onResizingChange: (Int?) -> Unit,
+    onResize: (appWidgetId: Int, heightDp: Int, halfWidth: Boolean) -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onAddWidgetClick: () -> Unit
 ) {
+    val rows = WidgetLayout.rows(widgets)
     items(
-        count = widgets.size,
-        key = { index -> "widget_${widgets[index].appWidgetId}" },
+        count = rows.size,
+        key = { index -> "widget_row_" + rows[index].first().appWidgetId },
         span = { GridItemSpan(maxLineSpan) }
     ) { index ->
-        val entry = widgets[index]
-        WidgetItem(
-            entry = entry,
-            widgetHostManager = widgetHostManager,
-            onRemove = { onRemoveWidget(entry.appWidgetId) }
-        )
+        val row = rows[index]
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            row.forEach { entry ->
+                Box(modifier = Modifier.weight(1f)) {
+                    WidgetItem(
+                        entry = entry,
+                        widgetHostManager = widgetHostManager,
+                        resizing = resizingId == entry.appWidgetId,
+                        onStartResize = { onResizingChange(entry.appWidgetId) },
+                        onCommit = { height, half -> onResize(entry.appWidgetId, height, half) },
+                        onDoneResizing = { onResizingChange(null) },
+                        onRemove = { onRemoveWidget(entry.appWidgetId) }
+                    )
+                }
+            }
+            // A lone half-width widget keeps its half; the other half stays empty.
+            if (row.size == 1 && row[0].halfWidth) Spacer(modifier = Modifier.weight(1f))
+        }
     }
 
     item(span = { GridItemSpan(maxLineSpan) }, key = "widget_add_button") {
@@ -108,13 +138,20 @@ fun LazyGridScope.widgetSectionItems(
  *  - The host view must be told its size ([AppWidgetHostView.updateAppWidgetSize]); providers
  *    such as clocks render by size and produce an empty layout for the default 0x0.
  *  - Long-press is attached to the host view itself. An overlay composable on top would swallow
- *    every touch and make the widget non-interactive.
+ *    every touch and make the widget non-interactive (except deliberately, while resizing).
+ *
+ * While [resizing], a border marks the widget, touches no longer reach it, a handle on the bottom
+ * edge changes the height within the provider's limits, and a button toggles half/full width.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WidgetItem(
     entry: WidgetEntry,
     widgetHostManager: WidgetHostManager,
+    resizing: Boolean,
+    onStartResize: () -> Unit,
+    onCommit: (heightDp: Int, halfWidth: Boolean) -> Unit,
+    onDoneResizing: () -> Unit,
     onRemove: () -> Unit
 ) {
     val context = LocalContext.current
@@ -129,15 +166,14 @@ private fun WidgetItem(
         }
     }
 
-    // Derived from the provider's declared size (px -> dp), so entries saved with older, wrong
-    // heights fix themselves.
-    val heightDp = remember(providerInfo, density) {
-        if (providerInfo != null) {
-            WidgetSizing.heightDp(providerInfo.minHeight, providerInfo.minResizeHeight, density)
-        } else {
-            entry.heightDp
-        }
+    val bounds = remember(providerInfo, density) {
+        val maxPx = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) providerInfo?.maxResizeHeight ?: 0 else 0
+        WidgetSizing.heightBounds(providerInfo?.minResizeHeight ?: 0, maxPx, density)
     }
+    val canResizeVertically = providerInfo?.let { WidgetSizing.canResizeVertically(it.resizeMode) } ?: true
+
+    var liveHeight by remember(entry.heightDp, resizing) { mutableFloatStateOf(entry.heightDp.toFloat()) }
+    val heightDp = if (resizing) liveHeight.roundToInt() else entry.heightDp
 
     val hostView = remember(entry.appWidgetId, providerInfo) {
         providerInfo?.let {
@@ -150,6 +186,7 @@ private fun WidgetItem(
     }
 
     val shape = RoundedCornerShape(28.dp)
+    val primary = MaterialTheme.colorScheme.primary
 
     Box(
         modifier = Modifier
@@ -159,17 +196,20 @@ private fun WidgetItem(
     ) {
         if (hostView != null) {
             AndroidView(
-                factory = {
+                factory = { ctx ->
                     // Detach from a previous parent if the grid recycled this item.
                     (hostView.parent as? ViewGroup)?.removeView(hostView)
-                    hostView.apply {
-                        layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
+                    LongPressFrameLayout(ctx).apply {
+                        addView(
+                            hostView,
+                            FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT
+                            )
                         )
                     }
                 },
-                update = { it.setOnLongClickListener { showMenu = true; true } },
+                update = { it.onLongPress = { showMenu = true } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(heightDp.dp)
@@ -197,7 +237,77 @@ private fun WidgetItem(
             }
         }
 
+        if (resizing) {
+            // Edit-mode frame. It also swallows taps so the widget isn't triggered by accident;
+            // drags still pass through, so the page keeps scrolling.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .border(2.dp, primary, shape)
+                    .pointerInput(Unit) { detectTapGestures { } }
+            )
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = { onCommit(liveHeight.roundToInt(), !entry.halfWidth) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = stringResource(
+                            id = if (entry.halfWidth) R.string.widget_width_full else R.string.widget_width_half
+                        ),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                Button(
+                    onClick = {
+                        onCommit(liveHeight.roundToInt(), entry.halfWidth)
+                        onDoneResizing()
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = stringResource(id = R.string.widget_resize_done),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            if (canResizeVertically) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 6.dp)
+                        .size(width = 72.dp, height = 28.dp)
+                        .clip(CircleShape)
+                        .background(primary)
+                        .pointerInput(bounds, density) {
+                            detectVerticalDragGestures { change, dragAmount ->
+                                change.consume()
+                                liveHeight = (liveHeight + dragAmount / density)
+                                    .coerceIn(bounds.first.toFloat(), bounds.last.toFloat())
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "═", color = MaterialTheme.colorScheme.onPrimary)
+                }
+            }
+        }
+
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(id = R.string.widget_resize)) },
+                onClick = {
+                    showMenu = false
+                    onStartResize()
+                }
+            )
             DropdownMenuItem(
                 text = {
                     Text(
